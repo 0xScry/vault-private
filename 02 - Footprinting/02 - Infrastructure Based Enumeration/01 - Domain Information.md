@@ -1,63 +1,62 @@
-**Domain Information (Passive OSINT)**
+### Passive Information Gathering Methodology
 
-Stay hidden — no direct contact with the target. You're a "visitor", not a scanner.
+The goal of passive information gathering is to understand a company's **Internet presence**, **infrastructure**, and **technologies** without making direct connections that could expose the penetration tester. By navigating as a "customer" or "visitor," you remain hidden while identifying the company's functionality and structure,.
 
----
+#### 1. Website Scrutiny
 
-**SSL Certificates → Subdomains**
+Before using technical tools, analyze the company's main website to understand their services.
 
-Check the company's SSL cert (often lists multiple domains), then use crt.sh:
+- **Goal:** Identify what technologies are required to support their specific industry (e.g., IoT, hosting, or data science).
+- **Perspective:** Use a **"developer's view"** to infer technical functionality and internal structures from the services they offer.
 
-```bash
-# JSON output
-curl -s "https://crt.sh/?q=inlanefreight.com&output=json" | jq .
+#### 2. Subdomain Discovery (Certificate Transparency)
 
-# Unique subdomains only
-curl -s "https://crt.sh/?q=inlanefreight.com&output=json" | jq . | grep name | cut -d":" -f2 | grep -v "CN=" | cut -d'"' -f2 | awk '{gsub(/\\n/,"\n");}1;' | sort -u
-```
+SSL certificates often contain multiple subdomains and indicate active services. **Certificate Transparency (CT)** logs provide an audit-proof database of issued certificates.
 
----
+|Command|Purpose|
+|:--|:--|
+|`curl -s https://crt.sh/?q=&output=json \|jq .`|
+|`curl -s https://crt.sh/?q=&output=json \|jq . \|
 
-**Resolve subdomains → IPs**
+#### 3. Infrastructure Identification
 
-```bash
-for i in $(cat subdomainlist); do host $i | grep "has address" | grep inlanefreight.com | cut -d" " -f1,4; done
-```
+It is critical to distinguish between **company-hosted servers** and **third-party providers**. Testing third-party hosts without explicit permission is prohibited.
 
----
+**Operational Workflow:**
 
-**Shodan on discovered IPs**
+1. Generate a list of subdomains.
+2. Resolve subdomains to IP addresses.
+3. Filter for IPs belonging to the target organization's infrastructure,.
 
-```bash
-for i in $(cat ip-addresses.txt); do shodan host $i; done
-```
+|Technique|Command|
+|:--|:--|
+|**Filter Hosted Servers**|`for i in $(cat <SUBDOMAIN_LIST>);do host $i \|
+|**Generate IP List**|`for i in $(cat <SUBDOMAIN_LIST>);do host $i \|
 
-Reveals open ports, services, versions, SSL config — without touching the target.
+#### 4. Service Identification via Shodan
 
----
+Shodan searches for open TCP/IP ports on devices permanently connected to the Internet. Use this to identify IoT devices, industrial controllers, and server versions without performing an active scan.
 
-**DNS Records**
+|Command|Purpose|
+|:--|:--|
+|`shodan host <TARGET_IP>`|Query Shodan for open ports, service versions (e.g., nginx, OpenSSH), and location data for a specific IP,.|
+|**Bulk Shodan Query**|`for i in $(cat ip-addresses.txt);do shodan host $i;done`|
 
-```bash
-dig any inlanefreight.com
-```
+#### 5. DNS Record Analysis
 
-|Record|What it tells you|
-|---|---|
-|`A`|IP → subdomain mappings|
-|`MX`|Mail provider (e.g. Google = Gmail)|
-|`NS`|Name servers → often reveals hosting provider|
-|`TXT`|Third-party services, SPF/DKIM, verification keys|
-|`SOA`|Zone info|
+Analyzing DNS records (A, MX, NS, TXT, SOA) reveals technical insights into the target's environment and third-party integrations,.
 
-**TXT records are goldmines** — they leak what services the company uses:
+- **Command:** `dig any <DOMAIN>`
 
-|Finding|Implication|
-|---|---|
-|Atlassian|Jira/Confluence → code repos, project data|
-|Google Gmail|Possible open GDrive files|
-|LogMeIn|Centralized remote access — high value target|
-|Mailgun|API endpoints → test for IDOR, SSRF|
-|Outlook/O365|OneDrive, Azure Blob/File (SMB!)|
-|INWX|Hosting/domain registrar → possible username in MS= TXT record|
-|SPF `ip4:` entries|Internal IPs leaking into public DNS|
+**Attack Implications of Identified Services:**
+
+|Service Detected|Indicator (TXT/MX Records)|Potential Attack Vector/Unlocks|
+|:--|:--|:--|
+|**Atlassian**|`atlassian-domain-verification`|Indicates software development/collaboration; check for vulnerabilities or leaked info.|
+|**Google Gmail**|`_spf.google.com`|Possible access to open GDrive folders or files via shared links.|
+|**LogMeIn**|`logmein-verification-code`|Centralized remote access management; admin access unlocks all managed systems.|
+|**Mailgun**|`include:mailgun.org`|Identify API interfaces to test for IDOR, SSRF, or unauthorized POST/PUT requests.|
+|**Outlook/O365**|`include:spf.protection.outlook.com`|Potential for Azure blob/file storage access or SMB protocol vulnerabilities.|
+|**INWX**|`MS=<ID/USERNAME>`|Hosting provider; "MS" values may reveal the username/ID for the management platform.|
+
+**Infrastructure Decision Point:** Identification of specific IP addresses (e.g., from TXT records or Shodan) marks the transition point where you determine which hosts to prioritize for later **active investigations**.

@@ -1,42 +1,51 @@
-**Cloud Resources (Passive)**
+# Cloud Resource Discovery and Enumeration
 
-Misconfigured cloud storage = unauthenticated access. Always check.
+Cloud platforms such as **AWS, GCP, and Azure** serve as central management points for modern infrastructure. While providers secure the base infrastructure, **administrator misconfigurations** often leave resources like S3 buckets (AWS), blobs (Azure), and cloud storage (GCP) accessible without authentication.
 
-**Main targets:**
+### Technique: DNS Infrastructure Mapping
 
-- AWS → S3 buckets (`s3-website-*.amazonaws.com`)
-- Azure → Blobs (`blob.core.windows.net`)
-- GCP → Cloud Storage
+Cloud storage endpoints are frequently added to a company's DNS records to simplify employee management and access. Identifying these records reveals the specific cloud providers and instances in use.
 
----
+**Operational Workflow:**
 
-**Finding cloud storage**
+1. **Resolve** subdomains from a pre-defined list.
+2. **Filter** results for the target domain and active IP addresses.
+3. **Identify** cloud-specific hostnames (e.g., `amazonaws.com`) within the resolved list.
 
-DNS resolution often leaks it directly (from previous subdomain enumeration):
+|Command|Purpose|
+|:--|:--|
+|`for i in $(cat );do host $i \|grep "has address" \|
 
-```
-s3-website-us-west-2.amazonaws.com 10.129.95.250
-```
+### Technique: Google Dorking for Cloud Assets
 
-**Google Dorks:**
+**Google Dorks** allow for targeted searches of indexed cloud storage files that may contain sensitive company data.
 
-```
-intext:<company> inurl:amazonaws.com
-intext:<company> inurl:blob.core.windows.net
-```
+- **When to use:** To find publicly indexed files (PDFs, text docs, code) hosted on cloud providers.
+- **Why it matters:** This identifies exposed documents and configurations without direct interaction with the target's infrastructure.
 
-**Other sources:**
+|Platform|Google Dork Syntax|
+|:--|:--|
+|**AWS**|`intext: "<COMPANY_NAME>" inurl:amazonaws.com`|
+|**Azure**|`intext: "<COMPANY_NAME>" inurl:blob.core.windows.net`|
 
-- Page source code — images/JS/CSS often loaded from cloud buckets
-- **domain.glass** — infrastructure overview, also reveals Cloudflare (note for Layer 2 Gateway)
-- **GrayHatWarfare** — search/filter public cloud buckets by provider and file type
+### Technique: Passive Discovery via Third-Party Tools and Source Code
 
----
+Companies often offload web assets (images, JS, CSS) to cloud storage to reduce web server load, leaving links in the application's **source code**.
 
-**What to look for in buckets:**
+1. **Source Code Analysis:** Inspect HTML for `dns-prefetch`, `preconnect`, or direct links to cloud URLs (e.g., `blob.core.windows.net`).
+2. **Domain Analysis:** Use tools like `domain.glass` to identify infrastructure details, SSL certificate data, and security measures like **Cloudflare**.
+3. **Bucket Specialized Search:** Use **GrayHatWarfare** to search for exposed AWS, Azure, and GCP storage.
+    - **Filter** by file format to find high-value targets.
+    - **Search** using company name abbreviations often used in naming conventions.
 
-- PDFs, docs, presentations, code
-- `id_rsa` / `id_rsa.pub` — leaked SSH keys = direct login, no password needed
-- Config files, credentials
+### Attack Implications and Exposed Data
 
-**Company name abbreviations** are commonly used for bucket names — try variations when searching.
+Misconfigured cloud instances can lead to the exposure of highly sensitive credentials that facilitate further exploitation.
+
+|Misconfiguration / Leak|Attack Implication|
+|:--|:--|
+|**Unauthenticated S3/Blob Access**|Allows unauthorized viewing or downloading of company documents, presentations, and source code.|
+|**Exposed SSH Private Keys**|Discovery of files like `id_rsa` allows an attacker to log into machines without a password.|
+|**Naming Convention Disclosure**|Using company abbreviations in bucket names makes them easier for attackers to guess and discover via tools like GrayHatWarfare.|
+
+The discovery of a security measure, such as **Cloudflare's** "Safe" assessment, indicates the presence of a gateway layer that must be considered in the overall attack strategy.
