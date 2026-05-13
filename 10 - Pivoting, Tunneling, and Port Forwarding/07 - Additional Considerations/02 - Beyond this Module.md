@@ -1,54 +1,33 @@
-### **Pivoting, Tunneling, and Port Forwarding: Conclusion & Next Steps**
+## Pivoting and Tunneling Operations
 
-#### **Operational Significance**
+When needing to influence teammate actions or provide results for senior testers during joint assessments.
 
-A deep understanding of **Pivoting**, **Tunneling**, **Port Forwarding**, and **Lateral Movement** is essential for everyday penetration testing duties. Results from these actions often dictate the **next steps** for an entire assessment team.
+> ⚠️ Gap: Source material lacks specific command syntax, flags, and binary execution details for SSH and SOCKS implementation.
 
-#### **Skill Remediation & Advancement**
+- **Defenders can spot pivots** by identifying traffic tunneled through non-standard routes.
+- **Host compromise is detectable** if a host is used as a pivot point for lateral movement.
 
-Use the following table to determine when to revisit foundational material or advance to specific specializations based on performance in this module:
+## SSH Tunneling and Multi-Protocol Proxies
 
-|Goal / Requirement|Recommended Module/Resource|Why it Matters|
-|:--|:--|:--|
-|**Foundation Remediation**|Introduction to Networking|Necessary if terminology, subnetting, or Layer 2-3 concepts were challenging.|
-|**Enterprise Pentesting**|Intro to AD / AD Enumeration and Attacks|Critical for applying pivoting skills in **Active Directory** environments.|
-|**Payload Improvement**|Shells and Payloads|Enhances exploitation skills and payload insight within target networks.|
-|**Web-Based Pivoting**|Intro to Web Apps / File Upload Attacks|Clarifies techniques for when webserver shells are used as pivot points.|
+When requiring encapsulated traffic across various protocols to bypass network restrictions.
 
----
+> ⚠️ Gap: Source identifies SpecterOps and SANS as references for these tools but does not provide the command-line interface instructions for their use.
 
-#### **Practical Application & Lab Selection**
+- **Tool selection** depends on whether the target environment requires standard SSH tunneling or proxying over alternative protocols.
 
-Practice provides exposure to various attack paths and builds comfort with pivoting tools.
+## Active Directory Enumeration and Pivoting
 
-|Lab / Resource|Type|Focus / Context|
-|:--|:--|:--|
-|**Starting Point**|HTB Labs|Foundational practice for applying module skills.|
-|**Dante**|Pro Lab|**Chaining pivoting skills** with other enterprise attack knowledge in a simulated corporate network.|
-|**Offshore / RastaLabs**|Pro Lab|Intermediate-level environments for **network pivoting** practice.|
-|**Ascension**|Mini Pro Lab|Extreme challenge involving **two different AD domains**.|
-|**Ippsec / 0xdf**|Walkthroughs|Understanding how tools and tactics tie into a **holistic attack path**.|
+When encountering an AD environment with multiple domains requiring chained pivoting skills.
 
----
+Use a pivot to establish an initial entry point into the target subnet:
 
-#### **Advanced Technical Resources**
+```
+<PIVOT_IP>
+```
 
-Refer to these sources for specific techniques and engagement-ready documentation:
+1. Identify the entry point for the internal network, such as the Ascension lab target
+2. Establish a tunnel to facilitate AD enumeration and attacking skills
+3. Chain pivoting techniques to move between different AD domains
 
-|Resource|Key Focus Area|
-|:--|:--|
-|**SpecterOps**|SSH Tunneling and **proxies over multiple protocols**.|
-|**RastaMouse**|C2 infrastructure, payloads, and red-teaming.|
-|**Plaintext’s Workshop**|Specific workshop for **Pivoting**.|
-|**SANS Webcasts**|Various pivoting tools and diverse **avenues of use**.|
-
----
-
-#### **Defensive Implications**
-
-For defenders, identifying pivoting is critical to halting lateral movement.
-
-- **Detection Focus:** Monitor for hosts being used as **pivot points**.
-- **Traffic Analysis:** Spot compromised hosts by identifying traffic being routed through **non-standard routes**.
-
-_**Note:** The provided source text focuses on methodology, resource mapping, and next steps; it does not contain specific command-line syntax for the techniques mentioned._
+- **Pivoting through corporate networks** requires chaining techniques to reach isolated segments.
+- **Skill level determines autonomy** in performing lateral movement and port forwarding during day-to-day duties.

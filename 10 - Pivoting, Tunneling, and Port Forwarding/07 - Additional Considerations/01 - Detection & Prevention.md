@@ -1,64 +1,85 @@
-# Detection & Prevention
-
-As a penetration tester, understanding defensive mitigations is critical for providing **remediation advice**. Defensive strategies are categorized into **People, Process, and Technology** to address hardware, software, and human vulnerabilities.
-
-### Establishing a Network Baseline
-
-Defenders must identify and investigate new hosts, unauthorized applications, and unique traffic patterns. An audit of these elements should occur **annually or every few months**.
-
-|Category|Items to Document & Track|
-|:--|:--|
-|**Inventory**|All hosts, servers, workstations, and mobile devices.|
-|**Applications**|Application catalog vs. unauthorized software/tools.|
-|**Network**|Visual network diagrams (e.g., **Netbrain**, **diagrams.net**), critical assets, and net flow.|
-
-### Defense-in-Depth Methodology
-
-#### 1. The Human Element (People)
-
-Users are often the weakest link; securing them prevents "easy wins".
-
-- **MFA Implementation:** Use two or more factors (e.g., something you have, know, or are) especially for **administrative accounts**.
-- **BYOD Risks:** Personally owned devices (laptops/smartphones) often lack organizational security administration, allowing malware to bridge from home environments to the **employee network**.
-
-#### 2. Administrative Control (Process)
-
-Defined policies ensure accountability and structured responses.
-
-- **Security Operations:** Utilize a **SOC** (internal or as-a-service) for 24/7 monitoring.
-- **Incident Response:** Maintain a practiced **disaster recovery plan** and IR plan to handle breaches.
-
-#### 3. Infrastructure Hardening (Technology)
-
-Visibility and segmentation are the primary deterrents to lateral movement.
-
-- **Visibility:** Implement a **SIEM** to correlate host and infrastructure logs.
-- **Segmentation:** Ensure standard users (e.g., HR) cannot access network infrastructure like **switches, routers, or internal admin panels**.
-- **Hardening:** Periodically check for **legacy misconfigurations** and prioritize patching based on the **CIA triad**.
+1. **Perimeter and Infrastructure Assessment**
+    
+    - Identify if environment is hybrid-cloud (AWS, Azure, GCP) or strictly on-premises.
+    - Map critical assets and network diagrams to identify segmentation gaps.
+    - Check for BYOD presence; personal devices often lack enterprise-grade hardening and provide initial pivot points.
+2. **Network Segmentation and Access Control Audit**
+    
+    - Verify if standard users (e.g., HR) can reach infrastructure management panels or routers.
+    - Determine if Out of Band (OOB) networks are used for management; if not, infrastructure devices are accessible from general user segments.
+3. **Protocol and Port Selection**
+    
+    - Scan for non-standard port usage (e.g., HTTP/HTTPS on port 444) to bypass basic port filtering.
+    - Evaluate DNS resolution paths; if internal hosts can resolve externally, DNS tunneling is viable.
+4. **Tunneling and Proxy Execution**
+    
+    - If SSH/RDP is available, check for MFA enforcement; compromise of credentials alone fails if MFA is active.
+    - Implement protocol tunneling (SSH or DNS) to bypass firewalls and mask traffic.
+    - Use proxy points to distribute traffic and avoid direct connection between the victim and attack infrastructure.
 
 ---
 
-### MITRE ATT&CK Mitigation Reference
+## Protocol Tunneling
 
-Use this table to map offensive actions discovered during testing to specific defensive controls.
+**When to use** Need to bypass firewalls or hide communications within allowed traffic like SSH or DNS.
 
-|TTP|MITRE Tag|Mitigation / Detection Strategy|
-|:--|:--|:--|
-|**External Remote Services**|T1133|Use **firewalls** to segment the environment; block internal protocols from reaching the internet; require **VPN** for service access.|
-|**Remote Services**|T1021|Enforce **MFA** for SSH/RDP; limit remote access permissions; use host-based firewalls to restrict connections to **authorized networks** only.|
-|**Management Traffic**|N/A|Expose infrastructure management (routers/switches) only to an **Out Of Band (OOB) network** to prevent pivoting from user segments.|
-|**Non-Standard Ports**|T1571|Compare traffic against a known **port/protocol baseline**; use **NIPS/NIDS** to identify protocol mismatches (e.g., HTTP over port 444).|
-|**Protocol Tunneling**|T1572|Disallow external DNS resolution except for designated **DNS servers**; monitor for **Beaconing patterns** indicating C2 channels.|
-|**Proxy Use**|T1090|Maintain **allow/block lists** for domains and IP addresses; require explicit approval for outbound net flow.|
-|**Living off the Land (LOTL)**|N/A|Establish a **behavioral baseline** for command shells; deploy **EDR/AV** solutions; feed all logs into a **SIEM** for early-stage detection.|
+**Commands**
 
----
+> ⚠️ Gap: The source describes the logic of tunneling traffic through SSH and DNS but does not provide the specific command-line syntax for execution.
 
-### Operational Workflow: Outside-In Assessment
+**Dangerous / misconfigured settings**
 
-When assessing a client's posture, follow this sequence to mirror real-world threats:
+- Internal hosts allowed to perform external DNS resolution directly instead of through a designated internal DC/DNS server.
+- Lack of monitoring for beaconing patterns or request timing in encrypted channels.
 
-1. **Perimeter Evaluation:** Identify infrastructure on-premises and in the **hybrid-cloud** (AWS, Azure, GCP).
-2. **External Access:** Verify if external services are gated by **firewalls and VPNs**.
-3. **Internal Movement:** Test if a compromised user can reach **Domain Controllers** or **File Shares** due to lack of segmentation.
-4. **Detection Test:** Determine if tools, unauthorized traffic, or **protocol tunnels** trigger alerts in the **SIEM/EDR**.
+**Gotchas** **Beaconing detection** can trigger alerts even in encrypted tunnels if requests follow a consistent temporal pattern.
+
+## Remote Service Access
+
+**When to use** Targeting internal movement via SSH or RDP after initial credential access.
+
+**Commands**
+
+> ⚠️ Gap: The source identifies the use of Remote Services (T1021) and External Remote Services (T1133) but lacks the specific commands for initiating these connections.
+
+**Dangerous / misconfigured settings**
+
+- Management services (SSH/RDP) exposed to general user segments instead of restricted OOB networks.
+- Remote access permissions granted to broad user groups rather than restricted, duty-separated accounts.
+
+**Gotchas** **MFA enforcement** will block access even with valid passwords or hashes.
+
+## Proxying and Traffic Distribution
+
+**When to use** Requirement to mask the origin of attack infrastructure or prevent direct victim-to-attacker netflow logs.
+
+**Commands**
+
+> ⚠️ Gap: The source identifies proxy use (T1090) for infrastructure masking but provides no configuration syntax for proxy tools.
+
+**Tool comparison**
+
+- Diagrams.net
+    - `diagrams.net`
+    - Prefer when a free, visual network documentation tool is required for baselining.
+- Netbrain
+    - [No syntax provided]
+    - Prefer for interactive access and automated mapping of all appliances in a diagram.
+
+**Edge cases**
+
+- Environments with strictly maintained allow-lists for domains/IPs make proxying difficult as all non-explicitly allowed traffic is blocked.
+
+**Gotchas** **Netflow baselining** by defenders can identify abnormal traffic patterns if the environment's "normal" state is well-documented.
+
+## Non-Standard Port Communication
+
+**When to use** Standard ports (80, 443) are heavily monitored or restricted, requiring traffic to be moved to atypical ports.
+
+**Commands** Example of using a non-standard port for HTTPS communication
+
+```
+<TARGET_IP>:444
+```
+
+**Gotchas** **NIPS/NIDS systems** and protocol/port pairing analysis can identify suspicious traffic (e.g., HTTPS over 444) if a solid baseline exists.

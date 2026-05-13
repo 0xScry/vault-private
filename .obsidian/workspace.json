@@ -4,24 +4,39 @@
     "type": "split",
     "children": [
       {
-        "id": "bcd4c7ebc040a664",
+        "id": "21910c063d588efc",
         "type": "tabs",
         "children": [
           {
-            "id": "a0e507f7a0a9bfe1",
+            "id": "5e2e6598ad139762",
             "type": "leaf",
             "state": {
               "type": "markdown",
               "state": {
-                "file": "Active Directory Enumeration & Attacks/10 - Why So Trusting?/01 - Domain Trusts Primer.md",
+                "file": "12 - Using Web Proxies/02 - Web Proxy/02 - Intercepting Web Requests.md",
                 "mode": "preview",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "01 - Domain Trusts Primer"
+              "title": "02 - Intercepting Web Requests"
+            }
+          },
+          {
+            "id": "99b9fe616d3d91de",
+            "type": "leaf",
+            "state": {
+              "type": "markdown",
+              "state": {
+                "file": "12 - Using Web Proxies/01 - Getting started/01 - Getting started.md",
+                "mode": "preview",
+                "source": false
+              },
+              "icon": "lucide-file",
+              "title": "01 - Getting started"
             }
           }
-        ]
+        ],
+        "currentTab": 1
       }
     ],
     "direction": "vertical"
@@ -156,13 +171,13 @@
             "state": {
               "type": "outline",
               "state": {
-                "file": "10 - Pivoting, Tunneling, and Port Forwarding/05 - Branching Out Our Tunnels/02 - SOCKS5 Tunneling with Chisel.md",
+                "file": "Active Directory Enumeration & Attacks/04 - Spray Responsibly/01 - Internal Password Spraying - from Linux.md",
                 "followCursor": false,
                 "showSearch": false,
                 "searchQuery": ""
               },
               "icon": "lucide-list",
-              "title": "Outline of 02 - SOCKS5 Tunneling with Chisel"
+              "title": "Outline of 01 - Internal Password Spraying - from Linux"
             }
           }
         ],
@@ -184,43 +199,43 @@
       "bases:Create new base": false
     }
   },
-  "active": "a0e507f7a0a9bfe1",
+  "active": "99b9fe616d3d91de",
   "lastOpenFiles": [
-    "Active Directory Enumeration & Attacks/09 - Stacking The Deck/05 - Miscellaneous Misconfigurations.md",
-    "Active Directory Enumeration & Attacks/10 - Why So Trusting?/01 - Domain Trusts Primer.md",
-    "Active Directory Enumeration & Attacks/10 - Why So Trusting?",
-    "Active Directory Enumeration & Attacks/09 - Stacking The Deck/04 - Bleeding Edge Vulnerabilities.md",
-    "Active Directory Enumeration & Attacks/09 - Stacking The Deck/02 - Kerberos \"Double Hop\" Problem.md",
-    "Active Directory Enumeration & Attacks/09 - Stacking The Deck/03 - Bleeding Edge Vulnerabilities.md",
-    "Active Directory Enumeration & Attacks/09 - Stacking The Deck/01 - Privileged Access.md",
-    "Active Directory Enumeration & Attacks/08 - An ACE in the Hole/03 - ACL Abuse Tactics.md",
-    "Active Directory Enumeration & Attacks/08 - An ACE in the Hole/04 - DCSync.md",
-    "Active Directory Enumeration & Attacks/06 - Deeper Down the Rabbit Hole/02 - Credentialed Enumeration - from Linux.md",
-    "Active Directory Enumeration & Attacks/06 - Deeper Down the Rabbit Hole/01 - Enumerating Security Controls.md",
-    "Active Directory Enumeration & Attacks/08 - An ACE in the Hole/01 - Access Control List (ACL) Abuse Primer.md",
-    "Active Directory Enumeration & Attacks/08 - An ACE in the Hole/02 - ACL Enumeration.md",
-    "Active Directory Enumeration & Attacks/07 - Cooking with Fire/02 - Kerberoasting - from Windows.md",
-    "Active Directory Enumeration & Attacks/07 - Cooking with Fire/01 - Kerberoasting - from Linux.md",
-    "Active Directory Enumeration & Attacks/03 - Sighting In, Hunting For A User/02 - Enumerating & Retrieving Password Policies.md",
-    "Active Directory Enumeration & Attacks/03 - Sighting In, Hunting For A User/01 - Password Spraying Overview.md",
-    "Active Directory Enumeration & Attacks/04 - Spray Responsibly/01 - Internal Password Spraying - from Linux.md",
-    "Active Directory Enumeration & Attacks/09 - Stacking The Deck",
-    "Active Directory Enumeration & Attacks/02 - Sniffing out a Foothold/01 - LLMNR NBT-NS Poisoning - from Linux.md",
-    "Active Directory Enumeration & Attacks/02 - Sniffing out a Foothold/02 - LLMNR NBT-NS Poisoning - from Windows.md",
-    "Active Directory Enumeration & Attacks/01 - initial enumeration/02 - Initial Enumeration of the Domain.md",
-    "Active Directory Enumeration & Attacks/01 - initial enumeration/01 - External Recon and Enumeration Principles.md",
-    "Active Directory Enumeration & Attacks/03 - Sighting In, Hunting For A User/03 - Password Spraying - Making a Target User List.md",
-    "Active Directory Enumeration & Attacks/08 - An ACE in the Hole",
-    "Active Directory Enumeration & Attacks/04 - Spray Responsibly/02 - Internal Password Spraying - from Windows.md",
-    "Active Directory Enumeration & Attacks/07 - Cooking with Fire",
-    "Active Directory Enumeration & Attacks/06 - Deeper Down the Rabbit Hole/04 - Living Off the Land.md",
-    "Active Directory Enumeration & Attacks/06 - Deeper Down the Rabbit Hole/03 - Credentialed Enumeration - from Windows.md",
-    "Active Directory Enumeration & Attacks/06 - Deeper Down the Rabbit Hole/03 -.md",
-    "Active Directory Enumeration & Attacks/06 - Deeper Down the Rabbit Hole",
-    "Active Directory Enumeration & Attacks/04 - Spray Responsibly",
-    "Active Directory Enumeration & Attacks/03 - Sighting In, Hunting For A User",
-    "Active Directory Enumeration & Attacks/02 - Sniffing out a Foothold",
-    "Active Directory Enumeration & Attacks/01 - initial enumeration",
-    "Active Directory Enumeration & Attacks"
+    "12 - Using Web Proxies/02 - Web Proxy/02 - Intercepting Web Requests.md",
+    "12 - Using Web Proxies/01 - Getting started/01 - Getting started.md",
+    "12 - Using Web Proxies/02 - Web Proxy/01 - Proxy Setup.md",
+    "12 - Using Web Proxies/02 - Web Proxy/04 - Automatic Modification.md",
+    "08 - Password Attacks/04 - Extracting Passwords from Windows Systems/05 - Attacking Active Directory and NTDS.dit.md",
+    "08 - Password Attacks/04 - Extracting Passwords from Windows Systems/06 - Credential Hunting in Windows.md",
+    "0.01 - Something for me/Something for me/My prompt.md",
+    "08 - Password Attacks/04 - Extracting Passwords from Windows Systems/04 - Attacking Windows Credential Manager.md",
+    "08 - Password Attacks/04 - Extracting Passwords from Windows Systems/03 - Attacking LSASS.md",
+    "08 - Password Attacks/04 - Extracting Passwords from Windows Systems/02 - Attacking SAM, SYSTEM, and SECURITY.md",
+    "08 - Password Attacks/04 - Extracting Passwords from Windows Systems/01 - Windows Authentication Process.md",
+    "08 - Password Attacks/03 - Remote Password Attacks/02 - Spraying, Stuffing, and Defaults.md",
+    "08 - Password Attacks/03 - Remote Password Attacks/01 - Network Services.md",
+    "08 - Password Attacks/02 - Password Cracking Techniques/06 - Cracking Protected Archives.md",
+    "08 - Password Attacks/02 - Password Cracking Techniques/05 - Cracking Protected Files.md",
+    "08 - Password Attacks/02 - Password Cracking Techniques/04 - Writing Custom Wordlists and Rules.md",
+    "08 - Password Attacks/02 - Password Cracking Techniques/03 - Introduction to Hashcat.md",
+    "08 - Password Attacks/02 - Password Cracking Techniques/02 - Introduction to John The Ripper.md",
+    "08 - Password Attacks/02 - Password Cracking Techniques/01 - Introduction to Password Cracking.md",
+    "08 - Password Attacks/01 - Introduction/Introduction.md",
+    "10 - Pivoting, Tunneling, and Port Forwarding/06 - Double Pivots/01 - RDP and SOCKS Tunneling with SocksOverRDP.md",
+    "09 - Attacking Common Services/08 - SMTP/01 - Attacking Email Services.md",
+    "09 - Attacking Common Services/08 - SMTP/02 - Latest Email Service Vulnerabilities.md",
+    "09 - Attacking Common Services/07 - DNS/02 - Latest DNS Vulnerabilities.md",
+    "09 - Attacking Common Services/07 - DNS/01 - Attacking DNS.md",
+    "09 - Attacking Common Services/06 - RDP/02 - Latest RDP Vulnerabilities.md",
+    "12 - Using Web Proxies/02 - Web Proxy",
+    "12 - Using Web Proxies/01 - Getting started",
+    "12 - Using Web Proxies",
+    "0.01 - Something for me/Something for me",
+    "11 - Active Directory Enumeration & Attacks/12 - Defensive Considerations",
+    "11 - Active Directory Enumeration & Attacks/11 - Breaking Down Boundaries",
+    "11 - Active Directory Enumeration & Attacks/10 - Why So Trusting?",
+    "11 - Active Directory Enumeration & Attacks/09 - Stacking The Deck",
+    "11 - Active Directory Enumeration & Attacks/08 - An ACE in the Hole",
+    "11 - Active Directory Enumeration & Attacks/07 - Cooking with Fire"
   ]
 }

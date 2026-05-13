@@ -1,70 +1,91 @@
-# DNS Enumeration and Attacks
+## DNS Enumeration
 
-The **Domain Name System (DNS)** translates domain names into numerical IP addresses. While it primarily uses **UDP/53**, it falls back to **TCP/53** for large packets or reliable data transmission during zone transfers. Attacks against DNS allow attackers to map an organization's infrastructure, services, and third-party providers.
+Port 53 is open and initial service versions or default configurations are required.
 
-## Initial Enumeration
+Initial service and script scan
 
-Use this technique to identify the DNS server version and run default scripts to find initial vulnerabilities or configuration details.
+```
+nmap -p53 -Pn -sV -sC <TARGET_IP>
+```
 
-|Command|Description|
-|:--|:--|
-|`nmap -p53 -Pn -sV -sC <TARGET_IP>`|Scans for DNS service version and runs default scripts.|
+Identify CNAME records for potential takeover
 
-## DNS Zone Transfer (AXFR)
+```
+host <DOMAIN>
+```
 
-**When to use:** Use when a DNS server is suspected of being misconfigured to allow unauthenticated requests for zone information. **Why it matters:** A successful transfer **dumps the entire DNS namespace**, revealing internal hosts and significantly increasing the target's attack surface.
+> ⚠️ Gap: Nmap scripts may fail to provide actionable data if **UDP/53** is filtered, requiring a forced TCP scan.
 
-### Operational Workflow
+## DNS Zone Transfer
 
-1. **Identify Vulnerable Servers:** Attempt to dump the zone file using the `AXFR` query type.
-2. **Automated Discovery:** Use specialized tools to find all name servers for a domain and automatically test each for zone transfer vulnerabilities.
+The DNS server lacks IP-based access controls on zone transfers, allowing a full dump of the namespace via TCP/53.
 
-|Command|Tool|Purpose|
-|:--|:--|:--|
-|`dig AXFR @<NAMESERVER_IP> <DOMAIN>`|`dig`|Manually requests a full zone transfer from a specific nameserver.|
-|`fierce --domain <DOMAIN>`|`Fierce`|Enumerates all DNS servers for a root domain and scans them for zone transfers.|
+Standard query for full zone dump
 
-## Subdomain Enumeration & Takeover
+```
+dig AXFR @<TARGET_IP> <DOMAIN>
+```
 
-**When to use:** Use when mapping the external infrastructure of a target or when searching for orphaned third-party service links. **Why it matters:** Identifying a **subdomain takeover** allows an attacker to gain complete control over a subdomain (e.g., hosting malicious content or phishing) by claiming an expired resource that a **CNAME record** still points to.
+Automated nameserver discovery and transfer attempt
 
-### Operational Workflow
+```
+fierce --domain <DOMAIN>
+```
 
-1. **Scrape Subdomains:** Use open-source intelligence to find existing subdomains.
-2. **Internal Brute-forcing:** If performing an internal pentest without internet access, use a tool with self-defined resolvers.
-3. **Analyze CNAME Records:** Check if subdomains point to third-party services (e.g., AWS, GitHub).
-4. **Verify Vulnerability:** Check for errors like `NoSuchBucket`, which indicate the external resource is available for registration.
+- **Tool comparison**
+    - **dig** -> `dig AXFR @<TARGET_IP> <DOMAIN>` -> prefer for manual, targeted verification of a known vulnerable server.
+    - **fierce** -> `fierce --domain <DOMAIN>` -> prefer for automated enumeration of all subdomains and nameservers in a root domain.
 
-### Command Reference
+**Misconfigured DNS servers** often allow **unauthenticated AXFR requests** from any IP address.
 
-|Command|Tool|Purpose|
-|:--|:--|:--|
-|`./subfinder -d <DOMAIN> -v`|`Subfinder`|Scrapes subdomains from open sources like DNSdumpster.|
-|`subbrute.py <DOMAIN> -s <WORDLIST> -r <RESOLVERS>`|`Subbrute`|Performs pure DNS brute-forcing; useful for internal pivoting.|
-|`host <SUBDOMAIN>`|`host`|Retrieves the **CNAME** record to identify where a subdomain points.|
+**UDP communication fails** when the DNS response packet is too large, forcing a fallback to **TCP/53**.
 
-### Misconfiguration Table
+## Subdomain Enumeration
 
-|Setting/Condition|Impact|
-|:--|:--|
-|**Dangling CNAME**|Points to an expired domain or service; allows **Subdomain Takeover**.|
-|**Unrestricted AXFR**|Allows any IP to download the full DNS database without authentication.|
+The attack surface needs expansion to identify hidden services or targets for takeover.
 
-## DNS Spoofing (Cache Poisoning)
+Passive scraping from open sources
 
-**When to use:** Use during **Man-in-the-Middle (MITM)** attacks on a local network to redirect traffic. **Why it matters:** This attack alters legitimate DNS records with false information, forcing victims to visit a fraudulent site instead of the intended destination.
+```
+./subfinder -d <DOMAIN> -v
+```
 
-### Operational Workflow
+Pure DNS brute-forcing using specific resolvers
 
-1. **Configure Spoofing Map:** Edit the tool configuration file to map the legitimate domain to the `<ATTACK_IP>`.
-2. **Identify Targets:** Scan the local network for the victim host and the default gateway.
-3. **Execute Poisoning:** Activate the spoofing plugin to send fake DNS responses to the victim.
+```
+./subbrute.py <DOMAIN> -s <FILE_PATH> -r <FILE_PATH>
+```
 
-|Step|Action/Command|
-|:--|:--|
-|1|Edit `/etc/ettercap/etter.dns` and add: `<DOMAIN> A <ATTACK_IP>`.|
-|2|Open `Ettercap` and navigate to **Hosts > Scan for Hosts**.|
-|3|Add `<TARGET_IP>` to **Target 1** and Gateway IP to **Target 2**.|
-|4|Navigate to **Plugins > Manage Plugins** and activate `dns_spoof`.|
+- **Tool comparison**
+    - **Subfinder** -> `./subfinder -d <DOMAIN> -v` -> prefer for external reconnaissance using public APIs.
+    - **Subbrute** -> `./subbrute.py <DOMAIN> -s <FILE_PATH> -r <FILE_PATH>` -> prefer for **internal penetration tests** on hosts without internet access.
 
-**Attack Implication:** Once active, any requests (e.g., web browsing or pings) from the victim to the mapped domain will resolve to the `<ATTACK_IP>`.
+Internal pivots often require uploading tools via USB or working from a compromised host to reach **internal DNS configurations**.
+
+## Subdomain Takeover
+
+A CNAME record points to an expired or non-existent third-party service, such as an AWS S3 bucket.
+
+Verification of AWS S3 bucket vacancy
+
+```
+host <DOMAIN>
+```
+
+**CNAME records remain active** even after the destination domain expires, allowing an attacker to claim the external resource.
+
+A **NoSuchBucket** error on a live subdomain indicates the resource is claimable.
+
+## Local DNS Spoofing
+
+Positioned on a local network with the ability to perform MITM and redirect traffic to a malicious host.
+
+1. Map the target domain to the attack machine
+
+```
+echo "<DOMAIN> A <ATTACK_IP>" >> /etc/ettercap/etter.dns
+```
+
+2. Start the spoofing plugin after setting Target1 (victim) and Target2 (gateway) in the interface.
+
+**Active MITM** is a prerequisite; the `dns_spoof` plugin will only respond to intercepted queries.

@@ -1,31 +1,20 @@
-# SSH Pivoting with Sshuttle
+## SSH Subnet Routing
 
-**Sshuttle** is a Python-based tool used to automate the execution of **iptables** and add pivot rules for a remote host. Use this technique to route all network traffic through a pivot point without the need to configure or use **proxychains**. This technique specifically works for pivoting over **SSH** and does not support other options like TOR or HTTPS proxy servers. Establishing this pivot unlocks the ability to use any networking tool directly against internal targets as if they were on the local network.
+Internal network resources are unreachable and manual **proxychains** encapsulation is breaking tool workflows; requires SSH access and **Python** on the remote pivot.,
 
-### Operational Workflow
+Install the utility on the attack host:
 
-1. **Install the Tool**: Use the package manager to install **sshuttle** on the attack machine.
-2. **Establish the Connection**: Connect to the pivot host using SSH credentials while specifying the internal subnet to be routed.
-3. **Monitor Redirection**: Sshuttle automatically creates entries in the **iptables** to redirect traffic destined for the internal network through the pivot host.
-4. **Direct Interaction**: Execute tools, such as **Nmap** or **RDP** clients, directly against internal target IP addresses.
+```
+sudo apt-get install sshuttle
+```
 
-### Command Reference
+Automate **iptables** rules to route a specific internal subnet through the SSH tunnel:
 
-|Command|Description|
-|:--|:--|
-|`sudo apt-get install sshuttle`|Installs the **sshuttle** package.|
-|`sudo sshuttle -r <USERNAME>@<PIVOT_IP> <INTERNAL_SUBNET> -v`|Connects to the pivot host and routes the specified internal network through it.|
-|`sudo nmap -v -A -sT -p <PORT> <TARGET_IP> -Pn`|Scans an internal target directly via the established **sshuttle** route.|
+```
+sudo sshuttle -r <USERNAME>@<PIVOT_IP> <TARGET_IP>/<MASK> -v
+```
 
-### Parameter Reference
+- **Sshuttle** -> `sshuttle -r <USERNAME>@<PIVOT_IP> <TARGET_IP>/<MASK>` -> Prefer for transparently routing **Nmap** or other tools natively without prefixing every command,,.
+- **Proxychains** -> Prefer when the pivot requires **TOR** or **HTTPS** proxies, as these are unsupported by this tool.
 
-|Parameter|Description|
-|:--|:--|
-|`-r`|Specifies the remote connection string using `<USERNAME>@<PIVOT_IP>`.|
-|`-v`|Enables **verbose** output to track the firewall manager and connection status.|
-|`<INTERNAL_SUBNET>`|The network range (e.g., 172.16.5.0/23) that should be routed through the pivot.|
-
-### Execution Notes
-
-- **Automation**: Sshuttle automates the setup of **nat** methods and **iptables** rules (such as `PREROUTING` and `OUTPUT`) to handle TCP redirection.
-- **Direct Access**: Once the connection is established, tools can be used directly against the internal network without prefixing them with proxy commands.
+**Gotchas** **Connection failure** occurs if the remote pivot host does not have a **Python** interpreter installed. **Traffic drop** will occur for **UDP** traffic when using the default **nat** method. **Pivot failure** results if attempting to use this tool for protocols other than **SSH**.

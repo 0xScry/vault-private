@@ -1,103 +1,91 @@
-# FTP (File Transfer Protocol) Service Attacks
+## Enumeration
 
-The File Transfer Protocol (FTP) facilitates file transfers and directory operations over **TCP port 21**. Attacks typically focus on abusing misconfigurations, excessive privileges, or protocol-specific behaviors.
+Port 21 is open and requires service versioning and script-based vulnerability identification.
 
-## 1. Initial Enumeration
-
-The primary goal is to identify the service version and check for **anonymous authentication**.
-
-|Command|Description|
-|:--|:--|
-|`sudo nmap -sC -sV -p 21 <TARGET_IP>`|Runs default scripts (`-sC`) to check for anonymous login and version detection (`-sV`).|
-|`nc -nv <TARGET_IP> 21`|Manually interacts with the service to grab the banner.|
-
-**Why it matters:** The FTP banner often reveals the specific software version, which helps in identifying known vulnerabilities.
-
----
-
-## 2. Exploiting Anonymous Authentication
-
-Use when a server allows login with the username `anonymous` and no password.
-
-### Operational Workflow
-
-1. **Connect** to the server:
-    
-    ```
-    ftp <TARGET_IP>
-    ```
-    
-2. **Authenticate** using `<USERNAME>` as `anonymous` and leave the password field blank.
-3. **Explore** the directory structure using `ls` and `cd`.
-4. **Transfer** files based on discovered permissions.
-
-### Command Reference: File Operations
-
-|Command|Action|Goal|
-|:--|:--|:--|
-|`get <FILE>`|Download|Retrieve sensitive configuration or credential files.|
-|`mget *.txt`|Download Multiple|Efficiently pull all files of a specific type.|
-|`put <FILE>`|Upload|Transfer malicious scripts to the server.|
-|`mput *.php`|Upload Multiple|Upload web shells or tools in bulk.|
-
-**Attack Implications:**
-
-- **Data Leakage:** Companies may inadvertently store sensitive information in folders accessible to anonymous users.
-- **Remote Code Execution (RCE):** If write permissions are enabled, an attacker can upload scripts (e.g., PHP). If the file path is discoverable (e.g., via path traversal in a web app), the script can be executed.
-
----
-
-## 3. Credential Brute Forcing
-
-Use when anonymous authentication is disabled and you have a list of potential usernames or passwords.
-
-### Brute Forcing with Medusa
-
-**Why it matters:** While effective against weak credentials, modern applications often have account lockout protections. **Password spraying** is generally more effective.
-
-|Parameter|Description|
-|:--|:--|
-|`-u <USERNAME>`|Target a specific single user.|
-|`-U <USER_LIST>`|Path to a file containing multiple usernames.|
-|`-P <PASS_LIST>`|Path to a file containing a list of passwords.|
-|`-M ftp`|Specifies the protocol (FTP).|
-|`-h <TARGET_IP>`|The target hostname or IP address.|
-
-**Command:**
+Scan for version banners and anonymous login status
 
 ```
-medusa -u <USERNAME> -P <PASS_LIST> -h <TARGET_IP> -M ftp
+sudo nmap -sC -sV -p 21 <TARGET_IP>
 ```
 
----
+Interactive service banner grabbing
 
-## 4. FTP Bounce Attack
+```
+nc -nv <TARGET_IP> 21
+```
 
-This technique uses an FTP server as an intermediary to send outbound traffic to another internal device, effectively bypassing firewall restrictions.
+- **Tool comparison**
+    - Nmap -> `nmap -sC -sV` -> Use for automated script execution and version detection
+    - Netcat -> `nc -nv` -> Use for manual banner verification if Nmap results are inconclusive
 
-**Scenario Context:** Use when a target host (`<TARGET_IP>`) is not exposed to the internet but is reachable by an FTP server in the DMZ (`<PIVOT_IP>`).
+**Gotchas** **Truncated directory listings** in Nmap output require `--script-args ftp-anon.maxlist=-1` to view all files.
 
-### Operational Workflow
+## Anonymous Login
 
-1. **Identify** a vulnerable FTP server that allows the `PORT` command to point to a different host than the client.
-2. **Execute** a bounce scan using Nmap to discover open ports on the internal target:
-    
-    ```
-    nmap -Pn -v -n -p <PORT> -b <USERNAME>:<PASSWORD>@<PIVOT_IP> <TARGET_IP>
-    ```
-    
+`ftp-anon` script returns success or manual connection accepts **anonymous** as a username.
 
-**Attack Implications:** This unlocks the ability to scan and potentially attack internal infrastructure that is otherwise unreachable from the attack machine. **Modern FTP servers** usually have protections against this by default, but misconfigurations can still leave them vulnerable.
+Connect to service and authenticate without a password
 
----
+```
+ftp <TARGET_IP>
+```
 
-## 5. Critical Misconfigurations
+Download a single file
 
-The following settings frequently lead to service compromise:
+```
+get <FILE_PATH>
+```
 
-|Misconfiguration|Impact|
-|:--|:--|
-|**Anonymous Login Enabled**|Allows unauthorized access to the filesystem and potential data theft.|
-|**Write Permissions for Anonymous**|Enables attackers to upload malicious scripts or web shells.|
-|**PORT Command Unrestricted**|Enables the FTP Bounce Attack to proxy traffic into internal networks.|
-|**Weak Password Policy**|Facilitates successful brute forcing or password spraying.|
+Download multiple files from the current directory
+
+```
+mget *
+```
+
+Upload a local file to the server
+
+```
+put <FILE_PATH>
+```
+
+- **Dangerous / misconfigured settings**
+    - Read/write permissions enabled for the anonymous user
+    - Sensitive files stored in the FTP root or subdirectories
+
+**Gotchas** **Write permissions** combined with web-accessible directories may allow for RCE via uploaded scripts if the file path can be identified.
+
+## Brute Forcing
+
+Anonymous authentication is disabled and a list of potential users or passwords is available.
+
+Targeted brute force against a specific user
+
+```
+medusa -u <USERNAME> -P <FILE_PATH> -h <TARGET_IP> -M ftp
+```
+
+Credential list-based attack
+
+```
+medusa -U <FILE_PATH> -P <FILE_PATH> -h <TARGET_IP> -M ftp
+```
+
+- **Tool comparison**
+    - Medusa -> `medusa -M ftp` -> Use for high-speed automated authentication attempts
+
+**Gotchas** **Account lockout mechanisms** usually prevent successful brute forcing on modern applications; password spraying is more effective.
+
+## FTP Bounce Attack
+
+An exposed FTP server can reach internal network segments that are not directly accessible from the attack host.
+
+Scan internal targets through the FTP proxy
+
+```
+nmap -Pn -v -n -p <PORT> -b <USERNAME>:<PASSWORD>@<PIVOT_IP> <TARGET_IP>
+```
+
+- **Dangerous / misconfigured settings**
+    - FTP `PORT` command allowed to connect to arbitrary internal IP addresses
+
+**Gotchas** **Modern FTP protections** typically disable the bounce attack capability by default.

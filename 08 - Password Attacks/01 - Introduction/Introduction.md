@@ -1,58 +1,58 @@
-### **Authentication Fundamentals**
-
-#### **Core Security Principles**
-
-Enterprise security relies on a balance between **Confidentiality**, **Integrity**, and **Availability**. This balance is maintained through three primary mechanisms:
-
-- **Auditing and Accounting:** Tracking every file, object, and host.
-- **Authentication:** Verifying a user's identity before granting access.
-- **Authorization:** Validating that an authenticated user has the appropriate permissions to access specific resources.
-
-#### **Authentication vs. Authorization**
-
-|Concept|Definition|Goal|
-|:--|:--|:--|
-|**Authentication**|Validation of identity via specific factors.|Establish "who" the user is.|
-|**Authorization**|Set of permissions granted to an identity.|Define "what" the user can do.|
+- Identify if authentication relies solely on **passwords** or incorporates factors like CAC, PIN, or biometrics.
+- Prioritize **password** guessing using common patterns: `123456`, `qwerty`, `password`, or personal names.
+- Upon compromising one service, immediately attempt authentication on all other identified platforms using the same `<PASSWORD>`.
+- Query known `<EMAIL_ADDRESS>` targets against breach databases to find leaked credentials that likely remain valid due to poor password hygiene.
 
 ---
 
-### **Multi-Factor Authentication (MFA)**
+## Weak Password Guessing
 
-Authentication is the process of validating identity using a combination of factors. The severity of the system determines how many factors are required.
+Use when MFA is absent and users are permitted to set simple credentials. 24% of users rely on a small set of predictable strings.
 
-**Common Factors Identified:**
+Common weak password candidates for wordlists
 
-1. **Knowledge:** Something you know (e.g., password, pin-code, email address).
-2. **Possession:** Something you have (e.g., Common Access Card (CAC), cell phone for 2FA).
-3. **Inherence:** Something you are (e.g., biometrics, fingerprint, facial recognition).
+```
+123456
+qwerty
+password
+<USERNAME>
+<PET_NAME>
+<CHILD_NAME>
+```
 
----
+**Dangerous / misconfigured settings**
 
-### **Password Methodology & Statistics**
+- Lack of complexity requirements allowing 8-digit numeric or alpha-only strings.
+- No account lockout or rate-limiting on **authentication** endpoints.
 
-The most widespread method of authentication is the **username/password** combination due to the balance of **convenience** and **security**.
+**Gotchas** **123456** remains the most prevalent credential in data breaches with 4.5 million occurrences.
 
-#### **Attack Implications & Decision Making**
+## Credential Reuse
 
-|Statistic/Trend|Attack Implication|Technique Selection|
-|:--|:--|:--|
-|**66% Password Reuse**|High probability that a compromised password works on other platforms.|Prioritize **Credential Stuffing** and **Lateral Movement** across different services.|
-|**23% High-Volume Reuse**|Significant portion of users reuse passwords across 3 or more accounts.|Target core corporate accounts first to unlock secondary access.|
-|**55% Breach Persistence**|Majority of users do not change passwords after a known data breach.|Utilize **Historical Leaks** (e.g., HaveIBeenPwned) for current authentication attempts.|
-|**Common Patterns**|24% use weak strings like `123456`, `qwerty`, or `password`.|Use **Password Spraying** with these high-frequency defaults before complex brute forcing.|
+Use after recovering a valid `<PASSWORD>` for a `<USERNAME>` or `<EMAIL_ADDRESS>`. There is a 66% statistical probability that the credential functions across multiple platforms.
 
-#### **User Behavior & Risk Factors**
+Manual reuse attempt on secondary service
 
-- **Complexity vs. UX:** Organizations often sacrifice security for user experience; complex MFA or frequent rotation can lead to manual workarounds or user stress.
-- **Predictable Content:** 33% of users use children's or pets' names, and 22% use their own names in passwords.
-- **Stale Credentials:** Because users fail to rotate credentials after breaches, databases like **HaveIBeenPwned** remain highly effective for identifying vulnerable accounts.
+```
+<SERVICE_NAME> login: <USERNAME> / <PASSWORD>
+```
 
----
+> ⚠️ Gap: Source establishes the high probability of reuse but lacks a specific tool or protocol for automated spraying.
 
-### **Operational Workflow: Credential Discovery**
+**Edge cases**
 
-1. **Identify Target Identifiers:** Obtain the user's ID, typically a username or email address.
-2. **Check Breach History:** Use services like **HaveIBeenPwned** to determine if the email address appears in historical data breaches.
-3. **Analyze Reuse Potential:** If a password is found or guessed, attempt authentication on secondary platforms, accounting for the 66% reuse statistic.
-4. **Evaluate Storage:** Proceed to identify how the target environment stores credentials (e.g., encryption or hashing methods) for extraction.
+- Users employing **password managers** (36% adoption) are significantly less susceptible to reuse attacks.
+
+**Gotchas** **55% of users** fail to change passwords following a confirmed data breach.
+
+## Breach Identification
+
+Use to find historical leaks associated with a specific `<EMAIL_ADDRESS>` to identify potential valid credentials.
+
+Check for presence in reported data breaches
+
+```
+https://haveibeenpwned.com/
+```
+
+**Gotchas** **Successful identification** in a breach does not guarantee the current password matches the leaked one, though the 55% non-change rate makes it a high-value lead.

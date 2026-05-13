@@ -1,110 +1,91 @@
-# Cracking Protected Files
+## Encrypted File Discovery
 
-## Hunting for Encrypted Files and SSH Keys
+When to use: Post-exploitation data gathering on Linux targets when searching for sensitive documentation or lateral movement vectors.
 
-During post-exploitation, identifying encrypted files is critical as they often contain **sensitive data** or **credentials** required for further lateral movement.
-
-### Locating Files by Extension
-
-Use this technique to identify common office documents and archives that likely contain sensitive professional or personal data.
-
-1. **Execute a recursive search** for common encrypted file extensions while filtering out noise from system directories.
+Recursive search for common Office, PDF, and OpenDocument extensions:
 
 ```
-for ext in $(echo ".xls .xls* .xltx .od* .doc .doc* .pdf .pot .pot* .pp*"); do
-    echo -e "\nFile extension: " $ext;
-    find / -name *$ext 2>/dev/null | grep -v "lib|fonts|share|core";
-done
+for ext in $(echo ".xls .xls* .xltx .od* .doc .doc* .pdf .pot .pot* .pp*");do echo -e "\nFile extension: "  $ext; find / -name *$ ext 2>/dev/null | grep -v "lib|fonts|share|core" ;done
 ```
 
-### Locating SSH Keys by Content
-
-SSH keys may not have standard extensions. Search for unique **header strings** to identify private keys.
-
-1. **Search recursively** for the standard SSH private key header.
+Recursive content-based search for SSH private keys using standard header/footer values:
 
 ```
-grep -rnE '^\-{5}BEGIN [A-Z0-9]+ PRIVATE KEY\-{5}$' /<DIRECTORY> 2>/dev/null
+grep -rnE '^\-{5}BEGIN [A-Z0-9]+ PRIVATE KEY\-{5}$ ' / 2>/dev/null
 ```
 
----
+,
 
-## Identifying Encrypted SSH Keys
+## SSH Key Identification
 
-Before attempting to use a discovered SSH key, you must determine if it is **passphrase-protected**.
+When to use: Found a potential private key and need to verify if it is **encrypted** or valid before pivot attempts.
 
-|Method|Indicator|Context|
-|:--|:--|:--|
-|**Header Check**|`Proc-Type: 4,ENCRYPTED`|Works for older **PEM formats**.|
-|**ssh-keygen**|Prompts for a passphrase|Used for **modern keys** that appear identical whether encrypted or not.|
-
-### Validation Workflow
-
-1. **Attempt to read the key** using `ssh-keygen`.
-2. **Analyze the output**: If it asks for a passphrase, the file must be cracked before use.
+Validate key and check for passphrase requirement using ssh-keygen:
 
 ```
-ssh-keygen -yf <PRIVATE_KEY_PATH>
+ssh-keygen -yf <FILE_PATH>
 ```
 
----
+Output indicating a **password-protected** key:
 
-## Extraction and Cracking Workflow
+```
+Enter passphrase for "<FILE_PATH>":
+```
 
-To crack protected files, you must first **extract the hash** into a format John the Ripper (JtR) understands.
+Gotchas:
 
-### 1. Locate Conversion Scripts
+- **Modern SSH keys** look identical in the header whether encrypted or not; older PEM formats explicitly list encryption methods in the header.
 
-JtR includes various "2john" scripts to handle different file types.
+## SSH Key Cracking
+
+When to use: A found SSH private key requires a passphrase for use.
+
+Locate required extraction scripts on the attack box:
 
 ```
 locate *2john*
 ```
 
-### 2. Extract and Crack Hashes
-
-Follow this sequence to convert the encrypted file into a crackable hash and then perform an **offline brute-force attack**.
-
-|Target File Type|Extraction Tool|Attack Implication|
-|:--|:--|:--|
-|**SSH Private Key**|`ssh2john.py`|Unlocks remote access to the target host.|
-|**MS Office Doc**|`office2john.py`|Reveals protected internal documentation.|
-|**PDF Document**|`pdf2john.py`|Accesses intercepted sensitive reports or contracts.|
-
-#### Operational Steps:
-
-1. **Extract the hash** from the protected file and redirect it to a file.
-2. **Run the cracker** against the hash using a wordlist (e.g., `rockyou.txt`).
-3. **Display the result** once the crack is successful.
-
-**SSH Key Cracking:**
+Extract hash and crack via John the Ripper (JtR):
 
 ```
-ssh2john.py <PRIVATE_KEY> > <OUTPUT_HASH_FILE>
-john --wordlist=<WORDLIST_PATH> <OUTPUT_HASH_FILE>
-john <OUTPUT_HASH_FILE> --show
+ssh2john.py <FILE_PATH> > <HASH>
+john --wordlist=rockyou.txt <HASH>
 ```
 
-**Microsoft Office Cracking:**
+View the cracked passphrase:
 
 ```
-office2john.py <OFFICE_FILE> > <OUTPUT_HASH_FILE>
-john --wordlist=<WORDLIST_PATH> <OUTPUT_HASH_FILE>
-john <OUTPUT_HASH_FILE> --show
+john <HASH> --show
 ```
 
-**PDF Cracking:**
+Gotchas:
+
+- The SSH cracking format in JtR may emit **false positives**, causing the tool to continue searching after finding a potential candidate.
+
+## Office and PDF Document Cracking
+
+When to use: Encountering locked .docx, .xlsx, or .pdf files during data exfiltration,.
+
+Extract and crack Microsoft Office hashes:
 
 ```
-pdf2john.py <PDF_FILE> > <OUTPUT_HASH_FILE>
-john --wordlist=<WORDLIST_PATH> <OUTPUT_HASH_FILE>
-john <OUTPUT_HASH_FILE> --show
+office2john.py <FILE_PATH> > <HASH>
+john --wordlist=rockyou.txt <HASH>
 ```
 
----
+Extract and crack PDF hashes:
 
-## Operational Considerations
+```
+pdf2john.py <FILE_PATH> > <HASH>
+john --wordlist=rockyou.txt <HASH>
+```
 
-- **Algorithm Types**: Most local files use **symmetric encryption** (e.g., AES-256), where the same key is used for encryption and decryption.
-- **Success Factors**: Success depends heavily on the quality of the **wordlist**. Standard lists may fail against complex, randomly generated passphrases.
-- **False Positives**: The SSH cracking format in JtR may emit **false positives**; the tool will continue trying even after a potential candidate is found.
+Tool comparison:
+
+- **John the Ripper** -> `john <HASH>` -> Prefer for initial extraction using included Python scripts.
+- **Hashcat** -> `hashcat <HASH>` -> Use for high-performance cracking once the hash is extracted.
+
+Gotchas:
+
+- **Security mechanisms** or long, randomly generated passphrases may prevent cracking within engagement timeframes.

@@ -1,108 +1,112 @@
-### Network Services - Remote Management & File Sharing
+## WinRM Remote Management
 
-#### **WinRM (Windows Remote Management)**
+Target is Windows, **5985 (HTTP)** or **5986 (HTTPS)** are open, and manual activation/configuration is confirmed.
 
-**Context:** Use for remote management of Windows systems via CLI when **RDP** or **SSH** are unavailable or unnecessary.
+Password spray or brute force against single or multiple targets
 
-- **Ports:** 5985 (HTTP), 5986 (HTTPS).
-- **Protocol:** Based on XML/SOAP; manages communication between WBEM and WMI.
+```
+netexec winrm <TARGET_IP> -u <USER_LIST> -p <PASS_LIST>
+```
 
-**Operational Workflow: Brute Forcing and Access**
+Establish interactive PowerShell session (MS-PSRP) once valid credentials are found
 
-1. **Identify valid credentials:** Use **NetExec** to perform password attacks against the WinRM service.
-2. **Verify "Pwn3d!" status:** If the output displays `(Pwn3d!)`, the user likely has permissions to execute system commands.
-3. **Establish a shell:** Use **Evil-WinRM** to initialize a PowerShell session via **MS-PSRP**.
+```
+evil-winrm -i <TARGET_IP> -u <USERNAME> -p <PASSWORD>
+```
 
-**Command Reference**
+- NetExec -> `netexec winrm <TARGET_IP> -u <USER> -p <PASS>` -> prefer for initial credential discovery and horizontal movement.
+    
+- Evil-WinRM -> `evil-winrm -i <TARGET_IP> -u <USER> -p <PASS>` -> prefer for stable shell access and command execution.
+    
+- Default configurations often lack restricted authentication mechanisms or required certificates.
+    
+- **Connection failure**: WinRM is not enabled by default on Windows 10/11 and requires manual environment configuration.
+    
+- **Pwn3d! label missing**: The absence of this tag in NetExec output indicates system command execution is likely restricted for that user.
+    
 
-|Tool|Goal|Command|
-|:--|:--|:--|
-|**NetExec**|Brute force WinRM credentials|`netexec winrm <TARGET_IP> -u <USERNAME_LIST> -p <PASSWORD_LIST>`|
-|**Evil-WinRM**|Establish interactive PowerShell shell|`evil-winrm -i <TARGET_IP> -u <USERNAME> -p <PASSWORD>`|
+## SSH Command Execution
 
----
+Target is Linux or Windows with **TCP 22** open for command execution or file transfer.
 
-#### **SSH (Secure Shell)**
+Brute force credentials when key-based auth is not enforced
 
-**Context:** Leading service for Linux management; also utilized for connecting to remote hosts to execute commands or transfer files.
+```
+hydra -L <USER_LIST> -P <PASS_LIST> ssh://<TARGET_IP>
+```
 
-- **Port:** 22 (Default).
-- **Security:** Uses symmetric/asymmetric encryption and hashing for message authenticity.
+Connect to remote host for terminal access
 
-**Authentication Implications**
+```
+ssh <USERNAME>@<TARGET_IP>
+```
 
-- **Public/Private Keys:** If an attacker obtains a **private key** that is not password protected, they can log in without credentials.
+- Private keys left **without password protection** allow immediate access if the file is exfiltrated.
+    
+- **Dropped connections**: High thread counts trigger service protections; use `-t 4` in Hydra to maintain stability.
+    
 
-**Command Reference**
+## RDP Graphical Access
 
-|Tool|Goal|Command|
-|:--|:--|:--|
-|**Hydra**|Brute force SSH credentials|`hydra -L <USERNAME_LIST> -P <PASSWORD_LIST> ssh://<TARGET_IP>`|
-|**OpenSSH**|Connect to target via SSH|`ssh <USERNAME>@<TARGET_IP>`|
+Windows host requires GUI-based control or access to local storage/printers over **TCP 3389**.
 
----
+Test credential validity against the RDP service
 
-#### **RDP (Remote Desktop Protocol)**
+```
+hydra -L <USER_LIST> -P <PASS_LIST> rdp://<TARGET_IP>
+```
 
-**Context:** Use for GUI-based management of Windows systems.
+Initialize a GUI session from a Linux attack host
 
-- **Port:** 3389 (TCP/UDP).
-- **Functionality:** Allows exchange of image, sound, and local resource sharing (printers/drives).
+```
+xfreerdp /v:<TARGET_IP> /u:<USERNAME> /p:<PASSWORD>
+```
 
-**Command Reference**
+- xfreerdp -> `xfreerdp /v:<TARGET_IP> /u:<USER> /p:<PASS>` -> primary CLI tool for RDP interaction.
+    
+- Remmina -> GUI interface -> alternative for managing multiple sessions.
+    
+- **Service lockout**: RDP servers are sensitive to concurrent tasks; use `-t 1` or `-t 4` and add delays with `-W 1` or `-W 3`.
+    
+- **Permissions mismatch**: Credentials may be valid, but the account must be specifically **active for remote desktop** to allow a session.
+    
 
-|Tool|Goal|Command|
-|:--|:--|:--|
-|**Hydra**|Brute force RDP credentials|`hydra -L <USERNAME_LIST> -P <PASSWORD_LIST> rdp://<TARGET_IP>`|
-|**xFreeRDP**|Launch GUI remote desktop session|`xfreerdp /v:<TARGET_IP> /u:<USERNAME> /p:<PASSWORD>`|
+## SMB File Sharing and Enumeration
 
----
+Windows or Samba targets with **TCP 445** open for file system interaction.
 
-#### **SMB (Server Message Block)**
+Automated credential testing across targets
 
-**Context:** Responsible for file/directory sharing and printing in local networks.
+```
+hydra -L <USER_LIST> -P <PASS_LIST> smb://<TARGET_IP>
+```
 
-- **Port:** 445.
-- **Implications:** Unlocks access to shared data and potential command execution if administrative shares (C$, ADMIN$) are accessible.
+Reliable brute force when targeting modern SMBv3 systems
 
-**Operational Workflow: Enumeration and Access**
+```
+use auxiliary/scanner/smb/smb_login
+set rhosts <TARGET_IP>
+set user_file <USER_LIST>
+set pass_file <PASS_LIST>
+run
+```
 
-1. **Credential Validation:** Brute force credentials using **Hydra** or **Metasploit**.
-2. **Share Enumeration:** Use **NetExec** to list available shares and check specific **Permissions** (READ/WRITE).
-3. **File Interaction:** Use **smbclient** to browse, upload, or download content from identified shares.
+List available shares and check specific access levels
 
-**Command Reference**
+```
+netexec smb <TARGET_IP> -u <USERNAME> -p <PASSWORD> --shares
+```
 
-|Tool|Goal|Command|
-|:--|:--|:--|
-|**Hydra**|Brute force SMB (Note: May fail on SMBv3)|`hydra -L <USERNAME_LIST> -P <PASSWORD_LIST> smb://<TARGET_IP>`|
-|**Metasploit**|Brute force SMB (**Fallback for SMBv3**)|`msfconsole -q; use auxiliary/scanner/smb/smb_login; set user_file <USERNAME_LIST>; set pass_file <PASSWORD_LIST>; set rhosts <TARGET_IP>; run`|
-|**NetExec**|List accessible SMB shares|`netexec smb <TARGET_IP> -u <USERNAME> -p <PASSWORD> --shares`|
-|**smbclient**|Connect to a specific share|`smbclient -U <USERNAME> \\\\<TARGET_IP>\\<SHARENAME>`|
+Connect to a specific share to upload or download files
 
----
+```
+smbclient -U <USERNAME> \\\\<TARGET_IP>\\<SHARE_NAME>
+```
 
-#### **Tool Installation Reference**
-
-|Tool|Method|Command|
-|:--|:--|:--|
-|**NetExec**|apt|`sudo apt-get -y install netexec`|
-|**Evil-WinRM**|gem|`sudo gem install evil-winrm`|
-
----
-
-#### **Edge Cases & Failure Conditions**
-
-|Scenario|Impact|Mitigation|
-|:--|:--|:--|
-|**SMBv3 Replies**|Outdated Hydra versions receive `invalid reply`.|Use **Metasploit `smb_login`** or update/recompile Hydra.|
-|**RDP Performance**|Servers often drop parallel connections.|Reduce tasks using `-t 1` or `-t 4` and use `-W` to wait between attempts.|
-|**SSH Parallelism**|Configurations may limit parallel tasks.|Reduce tasks to `-t 4`.|
-
-#### **Dangerous/Misconfigured Settings**
-
-| Setting                      | Security Risk                                                                                |
-| :--------------------------- | :------------------------------------------------------------------------------------------- |
-| **Unprotected Private Keys** | Allows immediate passwordless login if the key file is compromised.                          |
-| **Default Settings**         | Services often ship with default configurations and basic authentication mechanisms.         |
-| **Manual WinRM Config**      | Activation and security (certificates) depend entirely on local/domain environment security. |
+- Hydra -> `hydra ... smb://` -> use for basic legacy checks.
+    
+- Metasploit -> `smb_login` -> use when encountering **SMBv3** or modern Windows responses.
+    
+- **Invalid reply error**: Outdated Hydra versions cannot process **SMBv3** responses; switch to Metasploit if this occurs.
+    
+- **Parallelism failure**: SMB typically rejects multiple concurrent login tasks; Hydra defaults to 1 task for this protocol.

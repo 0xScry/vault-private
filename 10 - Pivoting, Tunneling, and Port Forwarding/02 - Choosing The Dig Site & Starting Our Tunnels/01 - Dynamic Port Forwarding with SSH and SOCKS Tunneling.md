@@ -1,80 +1,90 @@
-### **SSH Local Port Forwarding**
+## Local Port Forwarding
 
-**Context:** Use when a specific service (e.g., MySQL) is bound to the **localhost** of a compromised host and is inaccessible from the external network. This technique redirects a local port on your attack machine to a remote port on the pivot host via an SSH tunnel.
+Target service is bound to localhost on the compromised host or blocked by an external firewall; requires SSH access to the pivot.
 
-**Attack Implications:** Enables the execution of **remote exploits** against locally hosted services as if they were running on your own machine.
+Forward a single remote service to a local port to enable remote exploit execution or local tool access:
 
-#### **Operational Workflow**
+```
+ssh -L <PORT>:localhost:<PORT> <USERNAME>@<PIVOT_IP>
+```
 
-1. **Identify Local Services:** Scan the pivot host to identify open SSH ports and potential local-only services.
-2. **Establish Tunnel:** Forward a local port to the remote service port.
-3. **Verify Connection:** Use local tools to confirm the service is reachable through the forwarded port.
+Forward multiple services simultaneously by chaining the `-L` flag:
 
-#### **Command Reference**
+```
+ssh -L <PORT>:localhost:<PORT> -L <PORT>:localhost:<PORT> <USERNAME>@<PIVOT_IP>
+```
 
-| Command                                                                                                             | Purpose                                                     |
-| :------------------------------------------------------------------------------------------------------------------ | :---------------------------------------------------------- |
-| `ssh -L <LOCAL_PORT>:localhost:<REMOTE_PORT> <USERNAME>@<PIVOT_IP>`                                                 | Forwards a single remote port to a local port.              |
-| `ssh -L <LOCAL_PORT_1>:localhost:<REMOTE_PORT_1> -L <LOCAL_PORT_2>:localhost:<REMOTE_PORT_2> <USERNAME>@<PIVOT_IP>` | Forwards **multiple ports** simultaneously.                 |
-| `netstat -antp \|grep <LOCAL_PORT>`                                                                                 |                                                             |
-| `nmap -v -sV -p<LOCAL_PORT> localhost`                                                                              | Queries the forwarded port to identify the service version. |
+Confirm the local listener is active and identifying the forwarded service:
 
----
+```
+netstat -antp | grep <PORT>
+```
 
-### **Dynamic Port Forwarding (SOCKS Tunneling)**
+```
+nmap -v -sV -p<PORT> localhost
+```
 
-**Context:** Use when you need to interact with an **entire internal subnet** that is not directly routable from your attack host. This is ideal when you do not yet know which specific services or hosts exist on the target network.
+- **MySQL/Local services** may be inaccessible for remote exploitation if they are strictly bound to the target's loopback interface.
 
-**How it Works:** SSH acts as a **SOCKS server**. A SOCKS client (like Proxychains) on the attack host intercepts tool traffic and routes it through the established SSH tunnel to the internal network.
+## Dynamic Port Forwarding (SOCKS Tunneling)
 
-#### **Operational Workflow**
+Pivot host has multiple NICs and internal subnets are not directly routable from the attack host.
 
-1. **Enable Dynamic Forwarding:** Start an SSH session with a SOCKS listener.
-2. **Configure Proxychains:** Point the proxy tool to the local SOCKS listener.
-3. **Route Tools:** Prepend `proxychains` to any networking tool to tunnel its traffic.
+Open a local SOCKS proxy to route traffic through the pivot to any reachable internal network:
 
-#### **Command Reference**
+```
+ssh -D <PORT> <USERNAME>@<PIVOT_IP>
+```
 
-|Command|Purpose|
-|:--|:--|
-|`ssh -D <LOCAL_SOCKS_PORT> <USERNAME>@<PIVOT_IP>`|Enables dynamic port forwarding on a specified local port.|
-|`tail -4 /etc/proxychains.conf`|Verifies the Proxychains configuration.|
-|`proxychains nmap -v -sn <TARGET_NET_RANGE>`|Performs a sweep of the internal network through the tunnel.|
+> ⚠️ Gap: The source recommends adding `socks4` to the configuration, but **SOCKS4** does not support UDP; if the internal service requires UDP, the connection will fail without a **SOCKS5** configuration.
 
----
+## Proxychains Configuration
 
-### **Pivoting via Proxychains**
+SOCKS tunnel is active but tools require a wrapper to force TCP traffic through the local listener.
 
-**Attack Implications:** Hides the IP of the attack host; the target sees the **IP of the pivot host** as the source of the traffic.
+Edit `/etc/proxychains.conf` to point to the active SSH tunnel:
 
-#### **Operational Limitations & Failures**
+```
+tail -4 /etc/proxychains.conf
+```
 
-|Condition|Requirement/Impact|
-|:--|:--|
-|**Nmap Scans**|**Must** use a **full TCP connect scan (`-sT`)**. Proxychains cannot understand partial packets or half-open connections.|
-|**Host Discovery**|Traditional ICMP pings often fail. Use **`-Pn`** to disable host-alive checks, especially against Windows targets with active firewalls.|
-|**SOCKS Type**|**SOCKS4** (no authentication/UDP). **SOCKS5** (supports authentication and UDP).|
+```
+socks4 127.0.0.1 <PORT>
+```
 
----
+## Internal Subnet Enumeration
 
-### **Internal Enumeration & Access**
+SOCKS tunnel and proxychains are configured but internal host availability and services are unknown.
 
-Once a tunnel is established, standard tools can be proxied to interact with internal targets.
+Perform a ping scan to identify alive hosts in the internal range:
 
-#### **Metasploit via Proxychains**
+```
+proxychains nmap -v -sn <TARGET_IP_RANGE>
+```
 
-To use Metasploit modules against internal targets:
+Execute a full port scan on a specific internal host:
 
-1. Launch the console: `proxychains msfconsole`.
-2. All traffic from auxiliary or exploit modules will now route through the SOCKS tunnel.
+```
+proxychains nmap -v -Pn -sT <TARGET_IP>
+```
 
-#### **GUI Access (RDP)**
+- **Partial packets** like half-connect/SYN scans return incorrect results; always use a **Full TCP connect scan** (`-sT`) over proxychains.
+- **ICMP requests** are blocked by Windows Defender; use `-Pn` to prevent Nmap from marking internal Windows hosts as down.
 
-If an internal host has RDP (Port 3389) open, use `xfreerdp` to gain graphical access.
+## Internal Service Access
 
-|Command|Goal|
-|:--|:--|
-|`proxychains nmap -v -Pn -sT <TARGET_IP>`|Detailed scan of a specific internal host.|
-|`proxychains xfreerdp /v:<TARGET_IP> /u:<USERNAME> /p:<PASSWORD>`|Establishes an RDP session through the pivot host.|
+Internal services are identified through the tunnel and require direct interaction or exploitation.
 
-**Note:** When using `xfreerdp`, you must accept the RDP certificate before the session initializes.
+Launch Metasploit and route all module traffic through the SOCKS proxy:
+
+```
+proxychains msfconsole
+```
+
+Establish an RDP session to an internal Windows target:
+
+```
+proxychains xfreerdp /v:<TARGET_IP> /u:<USERNAME> /p:<PASSWORD>
+```
+
+- **RDP certificates** must be accepted manually before the session initializes; failure to accept will prevent the connection through the tunnel.

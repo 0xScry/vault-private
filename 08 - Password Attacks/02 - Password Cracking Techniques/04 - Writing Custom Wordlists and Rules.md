@@ -1,74 +1,67 @@
-# Writing Custom Wordlists and Rules
 
-### Password Policy Circumvention
-
-**Password policies** (requiring uppercase, numbers, special characters, and minimum lengths) are often undermined by predictable human behavior. Users typically choose passwords based on the service name, company name, or personal interests (pets, hobbies, sports).
-
-Use **OSINT** to identify these personal details to create targeted wordlists.
-
-|Description|Password Syntax Example|
-|:--|:--|
-|First letter uppercase|`Password`|
-|Adding numbers|`Password123`|
-|Adding year|`Password2022`|
-|Adding month|`Password02`|
-|Ending with exclamation mark|`Password2022!`|
-|Special character substitution|`P@ssw0rd2022!`|
-
-_Note: Most passwords are 10 characters or fewer. When organizations require regular changes, users often increment a digit or change the month name._
+1. Conduct OSINT on the organization or individual to identify company names, geographical regions, pets, hobbies, and interests.
+2. Scrape the target's web presence using CeWL to build a base wordlist of industry-specific terms.
+3. Identify the target's password policy to determine minimum length and required character sets (e.g., uppercase, numbers, special characters).
+4. Create or select a Hashcat ruleset (e.g., `best64.rule` or a custom `.rule` file) that mirrors common human behavior, such as appending the current year or month.
+5. Apply the ruleset to the base wordlist to generate mutated variants that satisfy the identified policy.
+6. Execute the cracking attempt against obtained hashes using the mutated wordlist.
 
 ---
 
-### Generating Base Wordlists with CeWL
+## Targeted Wordlist Generation
 
-Use **CeWL** to spider a target’s website and extract unique words. This creates a list of keywords relevant to the organization's industry and culture, which are likely candidates for user passwords.
+Web presence exists for a corporate target and you need words with a higher probability of being used by employees.
 
-**Operational Workflow:**
-
-1. Identify the target website.
-2. Run CeWL to crawl the site for unique strings.
-3. Use the resulting list as a base for mutation rules.
-
-**Command Reference:**
-
-|Parameter|Description|
-|:--|:--|
-|`-d <DEPTH>`|The depth to spider the website.|
-|`-m <LENGTH>`|Minimum length of words to extract.|
-|`--lowercase`|Store all discovered words in lowercase.|
-|`-w <FILE>`|Path to the output file.|
+Scrape words from a website with specific depth and minimum length constraints
 
 ```
-cewl <URL> -d <DEPTH> -m <MIN_LENGTH> --lowercase -w <WORDLIST>
+cewl <URL> -d <DEPTH> -m <MIN_LENGTH> --lowercase -w <FILE_PATH>
 ```
 
----
+- **Gotchas**: **Small wordlists** often result from setting the minimum length (`-m`) too high or depth (`-d`) too low for the specific site structure.
 
-### Hashcat Rule-Based Mutations
+## Rule-Based Mutation
 
-Rule-based attacks allow you to transform a base wordlist into thousands of variants that satisfy complexity requirements. This is used when simple wordlists fail against systems enforcing complex password policies.
+Target password policy requires complexity (uppercase, digits, special characters) and users are likely following predictable patterns like appending years or capitalizing the first letter.
 
-**Common Hashcat Rule Functions:**
-
-|Function|Description|
-|:--|:--|
-|`:`|Do nothing (keep original word).|
-|`l`|Lowercase all letters.|
-|`u`|Uppercase all letters.|
-|`c`|Capitalize the first letter and lowercase the rest.|
-|`sXY`|Replace all instances of character `X` with character `Y`.|
-|`$!`|Append an exclamation point `!` to the end of the word.|
-
-**Generating the Mutated Wordlist:**
-
-1. Create a rule file (e.g., `custom.rule`) with one transformation rule per line.
-2. Apply the rule file to a base wordlist using the `--stdout` flag to preview or save the results.
+Apply custom rules to a wordlist and output unique mutated strings to a new file
 
 ```
-hashcat --force <BASE_WORDLIST> -r <RULE_FILE> --stdout | sort -u > <MUTATED_WORDLIST>
+hashcat --force <FILE_PATH> -r <FILE_PATH> --stdout | sort -u > <FILE_PATH>
 ```
 
-**Attack Implications:**
+### Hashcat Rule Syntax
 
-- **Pre-built rules:** Tools like Hashcat and John the Ripper (JtR) include `best64.rule`, a highly effective set of common transformations.
-- **Effectiveness:** Targeted guessing is significantly more successful when rules are combined with info regarding the **geographical region**, **industry**, and **password policy**.
+Functions to define transformations within a `.rule` file:
+
+- `:` Do nothing
+- `l` Lowercase all letters
+- `u` Uppercase all letters
+- `c` Capitalize first letter, lowercase others
+- `sXY` Replace all instances of X with Y
+- `$!` Append "!" to the end of the word
+
+### Tool comparison
+
+- Custom Rules -> `custom.rule` -> prefer when you have specific OSINT (e.g., target always uses specific years or suffixes).
+    
+- Pre-built Rules -> `best64.rule` -> prefer for general-purpose cracking when specific user patterns are unknown.
+    
+- **Gotchas**: **Ruleset mismatch** occurs when the transformations do not account for the specific password policy, such as failing to add a required special character.
+    
+
+## Password Pattern Analysis
+
+Target requires regular password changes, causing users to increment digits or change months/years in their existing passwords.
+
+Common syntax patterns to include in custom rules:
+
+```
+c             # First letter uppercase
+$1$2$3        # Adding numbers
+$2$0$2$2      # Adding year
+$!            # Adding special character
+```
+
+- **Edge cases**: Most passwords are no longer than ten characters; focus rules on base words of at least five characters to meet typical 8-10 character requirements.
+- **Gotchas**: **Guessing game failure** is the baseline; cracking will fail if keywords related to industry, geography, or personal OSINT are overlooked.

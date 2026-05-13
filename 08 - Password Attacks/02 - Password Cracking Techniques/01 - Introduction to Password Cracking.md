@@ -1,56 +1,73 @@
-# Introduction to Password Cracking
+1. Capture hash and identify algorithm (**MD5**, **SHA-256**).
+2. Check for **salting**; if unsalted, prioritize **rainbow tables** for near-instant identification.
+3. If salted or no table match, execute a **dictionary attack** using `rockyou.txt` or **SecLists**.
+4. If dictionary fails and password length is estimated <9 characters, initiate a **brute-force attack**.
+5. Adjust expectations based on algorithm; **MD5** allows high-speed guessing, while **DCC2** significantly throttles attempts.
 
-Hashing is a mathematical function that transforms input bytes into a fixed-size output (e.g., **MD5**, **SHA-256**). It is designed to be **one-way**, meaning the original password should not be retrievable from the hash alone. **Password cracking** is the process of attempting to determine the original input based on the hash.
+---
 
-## Hash Generation Command Reference
+## Manual Hash Generation
 
-Use these commands to generate hashes for verification or testing purposes.
+Verification of cleartext candidates against captured hashes.
 
-|Tool|Description|Command|
-|:--|:--|:--|
-|`md5sum`|Generates an MD5 hash of the input|`echo -n \|
-|`sha256sum`|Generates a SHA-256 hash of the input|`echo -n \|
+Verify a suspected cleartext matches an **MD5** hash
 
-## Password Cracking Methodology
+```
+echo -n <PASSWORD> | md5sum
+```
 
-|Technique|When to Use|Why Use It|Implications|
-|:--|:--|:--|:--|
-|**Rainbow Tables**|When targeting unsalted hashes|Extremely fast; uses pre-compiled maps of inputs and outputs.|Ineffective against salted hashes.|
-|**Dictionary Attack**|Primary method for penetration tests|Most efficient under time constraints; uses statistically likely passwords.|Limited by the quality and size of the wordlist (e.g., `rockyou.txt`).|
-|**Brute-Force Attack**|As a last resort for short passwords (<9 characters)|100% effective given enough time; attempts every possible combination.|Extremely slow for long/strong passwords; hardware dependent.|
+Verify a suspected cleartext matches a **SHA-256** hash
 
-### Defeating Rainbow Tables with Salting
+```
+echo -n <PASSWORD> | sha256sum
+```
 
-**Salting** is the addition of a random sequence of bytes to a password before hashing.
-
-- **Decision Point:** If a hash is salted, rainbow tables become impractical because the attacker must re-map the table for every possible salt value.
-- **Operational Note:** Salts are not secret; they are typically **prepended** to the hash so the system can verify authentication requests.
-
-**Salted Hash Generation Workflow:**
-
-1. Combine the salt and the password.
-2. Hash the resulting string.
+Generate a hash with a known prepended salt
 
 ```
 echo -n <SALT><PASSWORD> | md5sum
 ```
 
-## Performance and Constraints
+**Gotchas** **Missing -n flag** in `echo` will include a trailing newline in the input, resulting in an incorrect hash value.
 
-Cracking speed is heavily influenced by the **hashing algorithm** and **hardware**.
+## Rainbow Table Attacks
 
-|Algorithm|Performance Context (Example)|
-|:--|:--|
-|**MD5**|High speed (~5 million guesses/sec on a standard laptop).|
-|**DCC2**|Low speed (~10,000 guesses/sec on a standard laptop).|
+Captured hash is unsalted and exists in pre-compiled mappings.
 
-## Wordlist Resources
+**Dangerous / misconfigured settings**
 
-For dictionary attacks, use established wordlists containing real-world leaked passwords.
+- **Lack of salting** allows attackers to bypass computational requirements via pre-compiled input/output maps.
 
-- **Location:** `/usr/share/wordlists/rockyou.txt` (common on attack platforms).
-- **Viewing Content:**
+**Gotchas** **Salting** invalidates rainbow tables by requiring attackers to re-map the entire table for every possible salt value.
+
+## Dictionary Attacks
+
+Default technique for time-constrained engagements using statistical likelihood.
+
+Preview the first 20 entries of a wordlist to verify format
 
 ```
-head --lines=20 /usr/share/wordlists/rockyou.txt
+head --lines=20 <FILE_PATH>
 ```
+
+**Edge cases**
+
+- **rockyou.txt** contains over 14 million real-world passwords and is the standard starting point for most assessments.
+
+**Gotchas** **Incomplete wordlists** will fail to identify any password not present in the specific statistical set being used.
+
+## Brute-Force Attacks
+
+Exhaustive character combination attempts when dictionary attacks fail.
+
+**When to use** Last resort for **short passwords** (<9 characters) where 100% effectiveness is required despite time costs.
+
+**Tool comparison**
+
+- **hashcat**
+    - `hashcat`
+    - Prefer for high-speed cracking on local hardware; performance varies by algorithm.
+
+**Gotchas** **High-iteration algorithms** like **DCC2** drastically reduce cracking speeds compared to simple algorithms like **MD5**, making brute-force non-viable.
+
+> ⚠️ Gap: Source lacks specific **hashcat** command syntax for executing dictionary or brute-force attacks; only mentions the tool's performance capabilities. ⚠️ Gap: Source mentions **mask attacks** as a more efficient alternative to brute-force but provides no implementation details.

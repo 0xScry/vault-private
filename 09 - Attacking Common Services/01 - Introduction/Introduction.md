@@ -1,162 +1,197 @@
-### **Interacting with Common Services**
+# Methodology
 
-To successfully attack a service, you must understand its purpose, how to interact with it, and what tools are available for exploitation.
-
----
-
-### **Internal File Sharing: SMB**
-
-**Server Message Block (SMB)** is a standard protocol in Windows networks for sharing folders. CLI-based interaction is preferred over GUI for **automating routine tasks** and efficiently searching large file sets.
-
-#### **1. Windows Command Shell (CMD) Interaction**
-
-Use **CMD** when you need a native environment to automate IT operations or interact with the file system directly.
-
-**Workflow: Mapping and Searching Shares**
-
-1. **Map the network share** to a local drive letter to execute commands as if the files were local.
-    
-    ```
-    net use n: \\<TARGET_IP>\<SHARE> /user:<USERNAME> <PASSWORD>
-    ```
-    
-2. **Enumerate file count** to assess the scope of the data.
-    
-    ```
-    dir n: /a-d /s /b | find /c ":"
-    ```
-    
-3. **Search for sensitive filenames** (e.g., credentials or secrets).
-    
-    ```
-    dir n:*cred* /s /b
-    ```
-    
-4. **Search within file contents** for specific patterns.
-    
-    ```
-    findstr /s /i <KEYWORD> n:*.*
-    ```
-    
-
-**CMD Command Reference**
-
-|Syntax|Description|
-|:--|:--|
-|`dir`|Displays files and subdirectories.|
-|`/a-d`|Attribute filter: excludes directories from results.|
-|`/s`|Recursive search through subdirectories.|
-|`/b`|Bare format (removes headers and summaries).|
-|`net use`|Connects to or disconnects from a shared resource.|
-
-#### **2. Windows PowerShell Interaction**
-
-**PowerShell** provides **Cmdlets**, which offer a more extensible scripting language than standard CMD.
-
-**Workflow: Authenticated Mapping**
-
-1. **Create a credential object** to securely manage authentication.
-    
-    ```
-    $username = '<USERNAME>'
-    $password = '<PASSWORD>'
-    $secpassword = ConvertTo-SecureString $password -AsPlainText -Force
-    $cred = New-Object System.Management.Automation.PSCredential $username, $secpassword
-    ```
-    
-2. **Mount the drive** using the stored credentials.
-    
-    ```
-    New-PSDrive -Name "N" -Root "\\<TARGET_IP>\<SHARE>" -PSProvider "FileSystem" -Credential $cred
-    ```
-    
-3. **Search for files** using filtering and recursion.
-    
-    ```
-    Get-ChildItem -Recurse -Path N:\ -Include *<KEYWORD>* -File
-    ```
-    
-4. **Search for text patterns** within files using regular expressions.
-    
-    ```
-    Get-ChildItem -Recurse -Path N:\ | Select-String "<KEYWORD>" -List
-    ```
-    
-
-#### **3. Linux SMB Interaction**
-
-Linux machines can mount SMB shares from Windows or Samba servers using `cifs-utils`.
-
-**Operational Workflow**
-
-1. **Install prerequisites**.
-    
-    ```
-    sudo apt install cifs-utils
-    ```
-    
-2. **Create a local mount point** and **attach the share**.
-    
-    ```
-    sudo mkdir /mnt/<SHARE_NAME>
-    sudo mount -t cifs -o username=<USERNAME>,password=<PASSWORD>,domain=<DOMAIN> //<TARGET_IP>/<SHARE> /mnt/<SHARE_NAME>
-    ```
-    
-3. **Audit the share** using standard Linux utilities like `find` and `grep`.
-    
-    ```
-    # Find specific filenames
-    find /mnt/<SHARE_NAME>/ -name *<KEYWORD>*
-    
-    # Search file contents recursively
-    grep -rn /mnt/<SHARE_NAME>/ -ie <KEYWORD>
-    ```
-    
+1. **Service Identification**: Determine if the target is **SMB**, **Email** (SMTP/IMAP), or a **Database** (MSSQL/MySQL)
+2. **Access Method**:
+    - **SMB (Windows)**: Use `net use` or `New-PSDrive` to map shares for local-like interaction
+    - **SMB (Linux)**: Use `mount -t cifs` to attach shares to the local filesystem
+    - **Databases**: Use `sqsh` (MSSQL/Linux), `sqlcmd` (MSSQL/Windows), or `mysql` binaries
+    - **Email**: Configure `evolution` for IMAP/SMTP access
+3. **Data Extraction**:
+    - **File Search**: Use `dir /s`, `Get-ChildItem -Recurse`, or `find` to locate sensitive filenames like **credentials** or **secrets**
+    - **Content Search**: Use `findstr`, `Select-String`, or `grep` to identify patterns within files
+    - **Database Enumeration**: Use Transact-SQL statements via CLI or GUI (dbeaver) to extract tables
 
 ---
 
-### **Email Services**
+## SMB Interaction (Windows)
 
-Email interaction requires protocols for both sending (**SMTP**) and receiving (**POP3/IMAP**).
+Accessing remote shares when local GUI is unavailable or automated file discovery is required
 
-**Evolution Mail Client (Linux)** Use a mail client to interact with servers for message retrieval or delivery.
+List remote share contents anonymously or with current session tokens
 
-- **Installation:** `sudo apt-get install evolution`.
-- **Launch Bypass:** If sandbox errors occur, use `export WEBKIT_FORCE_SANDBOX=0 && evolution`.
-- **Security:** Verify supported encryption (TLS/STARTTLS) using the "Check for Supported Types" option.
+```
+dir \\<TARGET_IP>\<SHARE_NAME>\
+```
+
+Map a remote share to a local drive letter for persistent CLI access
+
+```
+net use <DRIVE_LETTER>: \\<TARGET_IP>\<SHARE_NAME>
+```
+
+Authenticate to a share using specific credentials and map it
+
+```
+net use <DRIVE_LETTER>: \\<TARGET_IP>\<SHARE_NAME> /user:<USERNAME> <PASSWORD>
+```
+
+Recursive search for specific strings in filenames via CMD
+
+```
+dir <DRIVE_LETTER>:*<STRING>* /s /b
+```
+
+Count total files in a mapped share and subdirectories
+
+```
+dir <DRIVE_LETTER>: /a-d /s /b | find /c ":"
+```
+
+Search for a specific pattern inside all files in a mapped share
+
+```
+findstr /s /i <PATTERN> <DRIVE_LETTER>:*.*
+```
+
+### PowerShell Variants
+
+Map a share using the PowerShell provider
+
+```
+New-PSDrive -Name "<DRIVE_LETTER>" -Root "\\<TARGET_IP>\<SHARE_NAME>" -PSProvider "FileSystem"
+```
+
+Map a share using a PSCredential object for authenticated access
+
+```
+$secpassword = ConvertTo-SecureString <PASSWORD> -AsPlainText -Force
+$cred = New-Object System.Management.Automation.PSCredential <USERNAME>, $secpassword
+New-PSDrive -Name "<DRIVE_LETTER>" -Root "\\<TARGET_IP>\<SHARE_NAME>" -PSProvider "FileSystem" -Credential $cred
+```
+
+Recursive file count in PowerShell
+
+```
+(<DRIVE_LETTER>: Get-ChildItem -File -Recurse | Measure-Object).Count
+```
+
+Search for text patterns within files using regex matching
+
+```
+Get-ChildItem -Recurse -Path <DRIVE_LETTER>:\ | Select-String "<PATTERN>" -List
+```
+
+- **Tool Comparison**
+    
+    - `net use` -> `net use n: \\<IP>\<SHARE>` -> Prefer for legacy CMD environments
+    - `New-PSDrive` -> `New-PSDrive -Name "N" -Root "\\<IP>\<SHARE>" -PSProvider "FileSystem"` -> Prefer for complex scripting or passing credential objects
+- **Gotchas**
+    
+    - **Authentication failure** occurs if the share requires credentials and none are provided, triggering a security prompt
 
 ---
 
-### **Database Interaction**
+## SMB Interaction (Linux)
 
-Databases often contain sensitive information like user credentials. **Attack Implications:** If you gain access with high privileges, you may be able to **execute commands as the service account** (specifically in MSSQL).
+Accessing Windows or Samba shares from a Linux attack host to use native tools like grep or find
 
-#### **1. Command Line Utilities**
+Mount a remote SMB share to a local directory using credentials
 
-|Database|OS|Command|
-|:--|:--|:--|
-|**MSSQL**|Linux|`sqsh -S <TARGET_IP> -U <USERNAME> -P <PASSWORD>`|
-|**MSSQL**|Windows|`sqlcmd -S <TARGET_IP> -U <USERNAME> -P <PASSWORD>`|
-|**MySQL**|Linux|`mysql -u <USERNAME> -p<PASSWORD> -h <TARGET_IP>`|
-|**MySQL**|Windows|`mysql.exe -u <USERNAME> -p<PASSWORD> -h <TARGET_IP>`|
+```
+sudo mount -t cifs -o username=<USERNAME>,password=<PASSWORD>,domain=<DOMAIN> //<TARGET_IP>/<SHARE_NAME> <FILE_PATH>
+```
 
-#### **2. GUI Applications**
+Mount a share using a credential file to avoid plaintext passwords in process lists
 
-GUI tools are useful for visual enumeration of databases and tables.
+```
+mount -t cifs //<TARGET_IP>/<SHARE_NAME> <FILE_PATH> -o credentials=<FILE_PATH>
+```
 
-- **dbeaver:** Multi-platform tool supporting MSSQL, MySQL, and PostgreSQL.
-- **Installation (Debian):** `sudo dpkg -i dbeaver-<VERSION>.deb`.
-- **Required Connection Data:** Target IP, Port, Database Engine, and Credentials.
+Structure for the credential file
+
+```
+username=<USERNAME>
+password=<PASSWORD>
+domain=<DOMAIN>
+```
+
+Recursive filename search on a mounted share
+
+```
+find <FILE_PATH> -name *<STRING>*
+```
+
+Recursive case-insensitive string search within files
+
+```
+grep -rn <FILE_PATH> -ie <STRING>
+```
+
+- **Dangerous / misconfigured settings**
+    
+    - **Anonymous authentication** allowed on sensitive shares
+- **Gotchas**
+    
+    - **Missing cifs-utils** will cause the mount command to fail; requires manual installation
 
 ---
 
-### **Common Service Tools Reference**
+## Database Interaction
 
-|Service|Tools|
-|:--|:--|
-|**SMB**|`smbclient`, `CrackMapExec`, `SMBMap`, `Impacket`, `psexec.py`, `smbexec.py`|
-|**FTP**|`ftp`, `lftp`, `ncftp`, `filezilla`, `crossftp`|
-|**Email**|`Thunderbird`, `Evolution`, `Claws`, `swaks`, `sendEmail`|
-|**Databases**|`mssql-cli`, `mycli`, `dbeaver`, `MySQL Workbench`, `SSMS`|
+Executing SQL queries or system commands after obtaining database credentials
 
-**Note on Access Issues:** Connection failures may stem from version mismatches or restricted permissions. Use specific error codes to research official documentation or community solutions.
+Connect to MSSQL from Linux using sqsh
+
+```
+sqsh -S <TARGET_IP> -U <USERNAME> -P <PASSWORD>
+```
+
+Connect to MSSQL from Windows using sqlcmd
+
+```
+sqlcmd -S <TARGET_IP> -U <USERNAME> -P <PASSWORD>
+```
+
+Connect to MySQL from Linux or Windows
+
+```
+mysql -u <USERNAME> -p<PASSWORD> -h <TARGET_IP>
+```
+
+Install dbeaver for multi-platform GUI database management
+
+```
+sudo dpkg -i dbeaver-<VERSION>.deb
+dbeaver &
+```
+
+- **Tool Comparison**
+    
+    - `sqsh`/`sqlcmd` -> `sqsh -S <IP> -U <USER>` -> Prefer for quick CLI enumeration or piping output
+    - `dbeaver` -> `dbeaver &` -> Prefer for visual exploration of large schemas across multiple database engines (MSSQL, MySQL, PostgreSQL)
+- **Edge Cases**
+    
+    - **High privileges** (e.g., sysadmin) on MSSQL may allow command execution as the service account
+
+---
+
+## Email Interaction
+
+Accessing mailboxes for sensitive information or verifying credentials via mail protocols
+
+Install Evolution mail client on Linux
+
+```
+sudo apt-get install evolution
+```
+
+- **Gotchas**
+    - **Bwrap error** prevents Evolution from starting; bypass by forcing the WebKit sandbox off
+
+```
+export WEBKIT_FORCE_SANDBOX=0 && evolution
+```
+
+```
+- **Encryption mismatch** will prevent connection; use "Check for Supported Types" to verify if TLS or STARTTLS is required
+```

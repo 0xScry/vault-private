@@ -1,62 +1,63 @@
-# **BlueKeep (CVE-2019-0708) - RDP Remote Code Execution**
 
-### **Vulnerability Overview**
-
-**BlueKeep** is a critical vulnerability affecting the **Remote Desktop Protocol (RDP)** service (TCP/3389). It allows for **Remote Code Execution (RCE)** without requiring prior authentication or user interaction.
-
-|Parameter|Value|
-|:--|:--|
-|**Service/Port**|RDP (TCP/3389)|
-|**CVE ID**|CVE-2019-0708|
-|**Privilege Level**|**LocalSystem**|
-|**Attack Vector**|Pre-authentication via manipulated connection initialization|
+1. Identify open RDP service on `TCP/3389`
+2. Verify target is a Windows variant pre-dating or missing the May 2019 security updates,
+3. Confirm with client before proceeding due to high risk of **system instability** and **BSoD**
+4. Send manipulated initialization request to trigger Use-After-Free (UAF) in virtual channel creation,
+5. Overwrite freed kernel memory with instructions for CPU execution
+6. Catch reverse shell initiated from `LocalSystem` account
 
 ---
 
-### **When and Why to Use**
+## BlueKeep RDP Exploitation (CVE-2019-0708)
 
-- **When:** Use when an RDP service is identified and the system is likely unpatched (common in large organizations with legacy infrastructure like hospitals).
-- **Why:** This technique provides the highest possible privileges (**LocalSystem**) and requires **no credentials** to execute.
+### When to use
 
----
+Unauthenticated RDP access on `TCP/3389` where legacy software or costly maintenance has prevented security patching,.
 
-### **Operational Workflow**
+### Commands
 
-The attack follows a two-cycle process targeting the kernel to achieve execution.
+> ⚠️ Gap: The source material describes the technical flow and logic of the UAF exploit but does not provide specific CLI tools, exploit module names, or syntax for execution. Use of external tools is required to implement the following logical stages.
 
-#### **Phase 1: Vulnerability Trigger (Initialization)**
+Trigger the vulnerability during the settings exchange phase before user authentication.
 
-1. **Source:** The attacker sends a **manipulated initialization request** during the settings exchange between client and server.
-2. **Process:** The request triggers a function to create a **virtual channel** containing the flaw.
-3. **Privileges:** Because RDP is a system administration service, it runs automatically with **LocalSystem Account** privileges.
-4. **Destination:** The manipulated function redirects the execution flow to a **kernel process**.
+```
+Source: Manipulated initialization request
+Process: Create virtual channel
+Privileges: LocalSystem
+Destination: Redirect to kernel process
+```
 
-#### **Phase 2: Remote Code Execution**
+### Dangerous / misconfigured settings
 
-5. **Source:** A payload is inserted into the process to **free kernel memory** and place attacker instructions.
-6. **Process:** The kernel process triggers the **Use-After-Free (UAF)** condition, causing the CPU to point to the attacker's code.
-7. **Privileges:** The instructions execute with **LocalSystem Account** privileges since they are running within the kernel.
-8. **Destination:** The execution results in a **reverse shell** sent over the network to `<ATTACK_IP>`.
+- RDP service enabled without Network Level Authentication (NLA)
+- Legacy Windows versions or unpatched systems missing May 2019 updates
 
----
+### Gotchas
 
-### **Attack Implications & Risks**
+**Blue Screen of Death (BSoD)**. The exploit is known to cause immediate system crashes and instability; client authorization is mandatory.
 
-- **Outcome:** Successful exploitation unlocks a reverse shell with full system control.
-- **System Instability:** This exploit is known to cause **system instability** and may result in a **Blue Screen of Death (BSoD)**.
+## Remote Code Execution Stage
 
----
+### When to use
 
-### **Decision Points & Critical Warnings**
+Initial settings exchange successfully redirected to a kernel process to allow memory manipulation.
 
-|Condition|Action / Implication|
-|:--|:--|
-|**Exploit Stability**|**High Risk.** Can crash the target system.|
-|**Engagement Protocol**|**Always consult the client** before running this exploit due to the BSoD risk.|
-|**Patch Status**|Microsoft has released updates for current and many older/unsupported versions; ensure the target is unpatched before attempting.|
+### Commands
 
----
+Inject the secondary payload to free kernel memory and point the CPU to arbitrary instructions.
 
-### **Technical Methodology: Use-After-Free (UAF)**
+```
+Source: Attacker payload inserted into kernel process
+Process: Free kernel memory / CPU redirection
+Privileges: LocalSystem
+Destination: Reverse shell to <ATTACK_IP>
+```
 
-The attack utilizes a **Use-After-Free** technique. After a function is exploited and memory is freed, data is written into the **kernel memory**. This allows the attacker to overwrite the freed memory with specific instructions that the CPU then executes.
+### Edge cases
+
+- Large organizations (e.g., hospitals) are higher-probability targets due to reliance on specific legacy libraries that prevent patching.
+- Approximately 25% of the 950,000 systems identified in 2019 remain vulnerable.
+
+### Gotchas
+
+**Restricted kernel memory**. Exploitation requires writing directly to kernel memory; failure to align instructions correctly will result in **total system failure** rather than a shell,.

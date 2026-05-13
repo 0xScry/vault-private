@@ -1,61 +1,40 @@
-# SSH Tunneling with Plink.exe and Proxifier
+## Dynamic Port Forwarding
 
-### Technique Overview
+Host is **locked down** and requires a pivot point without transferring external binaries; PuTTY or **Plink** must be present on the system or an accessible **file share**.
 
-**Plink (PuTTY Link)** is a Windows command-line SSH tool used to create **dynamic port forwards** and **SOCKS proxies**.
-
-**When to use:**
-
-- When operating from a **Windows-based attack host**.
-- When **living off the land** on a compromised Windows pivot host that lacks a native SSH client (common in pre-2018 versions) but has PuTTY/Plink installed.
-- To **avoid detection** by using existing, legitimate administrative tools.
-
-**Attack Implications:**
-
-- Unlocks the ability to route traffic from Windows desktop applications (like RDP) through a pivot point into an internal network.
-
----
-
-### Command Reference: Plink.exe
-
-|Parameter|Description|
-|:--|:--|
-|`-ssh`|Specifies the use of the SSH protocol.|
-|`-D <PORT>`|Initiates a **dynamic port forward** on the specified local port.|
-
----
-
-### Operational Workflow
-
-#### 1. Establish the Dynamic Port Forward
-
-Use this command to create an SSH session between your Windows host and a pivot host, opening a local SOCKS listener.
+Start a **dynamic port forward** and listener on a specific local port over SSH:
 
 ```
 plink -ssh -D <PORT> <USERNAME>@<PIVOT_IP>
 ```
 
-- **Goal:** Starts an SSH session and begins listening on the specified `<PORT>` (e.g., 9050) for incoming traffic to be proxied.
+- **Plink** -> `plink -ssh -D <PORT>` -> Prefer for **legacy Windows** (pre-Fall 2018) or when living off the land to avoid **detection**.
+- **SSH (Native)** -> `ssh -D <PORT>` -> Prefer on modern Windows builds where the native client is available.
 
-#### 2. Tunneling Traffic with Proxifier
+**Gotchas** **Silent failure** occurs on newer Windows builds if you default to **Plink** instead of using the native SSH client when available.
 
-Since many Windows applications do not natively support SOCKS proxies, **Proxifier** is used to force application traffic through the Plink tunnel.
+## Windows Application Tunneling
 
-1. **Configure Proxy Server:** Add a new proxy entry in Proxifier settings.
-    - **Address:** `127.0.0.1`
-    - **Port:** The `<PORT>` defined in the Plink command.
-    - **Protocol:** **SOCKS4**.
-2. **Launch Target Application:** Once the profile is active, applications will operate through the proxy chain.
-3. **Example (RDP to Internal Target):**
-    
-    ```
-    mstsc.exe
-    ```
-    
-    - **Goal:** Initiate an RDP session with a `<TARGET_IP>` that is only reachable through the established tunnel.
+Windows-based attack host needs to route desktop client applications through an established **SOCKS proxy**.
 
----
+1. Start the **Plink** session to open the local listener port:
 
-### Scenario Context
+```
+plink -ssh -D <PORT> <USERNAME>@<PIVOT_IP>
+```
 
-- **Inbound Restrictions:** If a pivot host is moderately locked down and you cannot upload custom tools, check for `plink.exe` in common locations or file shares to establish a pivot point.
+2. Configure **Proxifier** Proxy Server settings to intercept local traffic:
+
+```
+Address: 127.0.0.1
+Port: <PORT>
+Protocol: SOCKS4
+```
+
+3. Launch the target application to operate through the **SOCKS tunnel**:
+
+```
+mstsc.exe
+```
+
+**Gotchas** **Connection failure** will result if the application is launched before the **Plink** listener is fully established and authenticated.

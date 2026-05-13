@@ -1,94 +1,132 @@
-# John The Ripper (JtR)
+## Hash Identification
 
-John the Ripper is an open-source tool used for cracking passwords through brute-force and dictionary attacks. The **"jumbo" variant** is the industry standard due to performance optimizations, multilingual wordlist support, and 64-bit architecture compatibility.
+Symptom: Hash format is unknown or JtR fails to identify it automatically.
 
-### Hash Identification
+Check hash against built-in lists to get potential JtR-specific format names
 
-Before cracking, you must identify the hash format. While JtR often auto-detects, manual identification is required for unknown formats.
+```
+hashid -j <HASH>
+```
 
-1. **Analyze the context** of where the hash was found to make an educated guess.
-2. **Use hashID** with the `-j` flag to map hashes to specific JtR format strings.
+Identify format by looking up sample hashes or known service contexts
 
-|Command|Purpose|
-|:--|:--|
-|`hashid -j <HASH>`|Identifies hash type and provides the specific JtR format name.|
+```
+grep <HASH_TYPE> /usr/share/john/john.conf
+```
 
----
-
-### Cracking Modes
-
-#### 1. Single Crack Mode
-
-- **When to use:** Use as a first step when targeting Linux credentials or when user metadata (username, GECOS, home directory) is available.
-- **Why it matters:** It is highly efficient because it generates candidates based on the victim's specific information (e.g., real name, phone number) and applies common string modifications.
-- **Attack Implication:** This can quickly crack passwords that are variations of personal details.
-
-|Command|Parameters|
-|:--|:--|
-|`john --single <HASH_FILE>`|Executes a rule-based attack using account metadata.|
-
-#### 2. Wordlist Mode
-
-- **When to use:** Use when you have a dictionary of potential passwords.
-- **Why it matters:** This is a standard dictionary attack that tests every entry in a text file against the hash.
-- **Decision Point:** Apply **--rules** to the wordlist to generate transformations (capitalization, special characters, numbers), increasing the chance of success without requiring a larger wordlist.
-
-|Command|Parameters|
-|:--|:--|
-|`john --wordlist=<WORDLIST_FILE> <HASH_FILE>`|Standard dictionary attack.|
-|`john --wordlist=<WL1>,<WL2> <HASH_FILE>`|Runs multiple wordlists sequentially.|
-|`john --wordlist=<WORDLIST_FILE> --rules <HASH_FILE>`|Applies transformations to wordlist entries.|
-
-#### 3. Incremental Mode
-
-- **When to use:** Use as a last resort when wordlists fail.
-- **Why it matters:** This is an exhaustive brute-force mode using **Markov chains** (statistical models) to prioritize likely character combinations.
-- **Edge Case:** This mode is resource-intensive and slow for long or complex passwords; performance can be improved by defining specific character sets or lengths in `john.conf`.
-
-|Command|Parameters|
-|:--|:--|
-|`john --incremental <HASH_FILE>`|Starts exhaustive brute-force using default character sets.|
-|`john --incremental=<CHARSET> <HASH_FILE>`|Focuses brute-force on a specific character set (e.g., ASCII, Latin1).|
+- **Tool comparison**
+    
+    - hashid -> `hashid -j <HASH>` -> prefer for quick identification of common formats with JtR flag support
+    - Manual Lookup -> check PentestMonkey or JtR sample docs -> prefer when tool output is ambiguous or multiple formats are suggested
+- **Gotchas**
+    
+    - **Ambiguous identification** occurs when hash context is missing, requiring manual testing of suggested formats.
 
 ---
 
-### Operating on Encrypted Files
+## File to Hash Conversion
 
-JtR cannot crack encrypted files (PDFs, ZIPs, SSH keys) directly. You must first extract the hash using a **"2john" utility**.
+Symptom: Target is an encrypted file, private key, or database rather than a raw hash string.
 
-**Operational Workflow:**
+Convert encrypted file to a format JtR can parse
 
-1. Locate the appropriate conversion tool (e.g., `ssh2john`, `zip2john`).
-2. Convert the file into a JtR-readable hash format and redirect output to a file.
-3. Run JtR against the generated hash file.
+```
+<SERVICE_NAME>2john <FILE_PATH> > <HASH_FILE>
+```
 
-|Command|Purpose|
-|:--|:--|
-|`<TOOL> <FILE_TO_CRACK> > <HASH_FILE>`|Converts an encrypted file into a crackable hash.|
-|`locate *2john*`|Lists all available conversion utilities on the system.|
+Locate all available conversion scripts on the system
 
-**Common Conversion Tools:**
+```
+locate *2john*
+```
 
-|Tool|Target File Type|
-|:--|:--|
-|`pdf2john`|PDF documents|
-|`ssh2john`|SSH private keys|
-|`zip2john`|ZIP archives|
-|`rar2john`|RAR archives|
-|`keepass2john`|KeePass databases|
-|`office2john`|MS Office documents|
+- **Edge cases**
+    - Script location: some conversion tools are in `/usr/bin/` while others are `.py` or `.pl` scripts in `/usr/share/john/`.
 
 ---
 
-### Command Reference: Specific Hash Formats
+## Single Crack Mode
 
-Use the `--format=` argument if JtR fails to identify the hash or if multiple candidates exist.
+Symptom: Targeting Linux credentials where username, home directory, or GECOS information is known.
 
-|Format String|Description|
-|:--|:--|
-|`nt`|Windows NT/NTLM hashes|
-|`netntlmv2`|Network NTLMv2 hashes|
-|`raw-md5` / `raw-sha1`|Standard raw MD5 or SHA1 hashes|
-|`mssql` / `mysql`|Database-specific password hashes|
-|`descrypt` / `sha512crypt`|Common Unix/Linux password hashes|
-|`openssha`|OpenSSH private key passwords|
+Run rule-based attack using local account information to generate candidates
+
+```
+john --single <FILE_PATH>
+```
+
+- **Gotchas**
+    - **Missing account metadata** in the input file will result in zero candidates being generated for this mode.
+
+---
+
+## Wordlist Mode
+
+Symptom: Dictionary attack required against a known or custom list of potential passwords.
+
+Run standard dictionary attack
+
+```
+john --wordlist=<FILE_PATH> <HASH_FILE>
+```
+
+Apply common mutations like capitalization or trailing numbers during wordlist processing
+
+```
+john --wordlist=<FILE_PATH> --rules <HASH_FILE>
+```
+
+Combine multiple wordlists for a single session
+
+```
+john --wordlist=<FILE_PATH_1>,<FILE_PATH_2> <HASH_FILE>
+```
+
+---
+
+## Incremental Mode
+
+Symptom: Wordlists are exhausted and exhaustive brute-force is required using statistical likelihood.
+
+Run brute-force attack using default character sets and lengths
+
+```
+john --incremental <HASH_FILE>
+```
+
+Use a specific character set defined in the configuration file
+
+```
+john --incremental=<SERVICE_NAME> <HASH_FILE>
+```
+
+- **Dangerous / misconfigured settings**
+    
+    - Large character sets or long MaxLen values in `john.conf` will make attacks effectively infinite.
+- **Gotchas**
+    
+    - **High resource consumption** makes this mode significantly slower than wordlist or single modes.
+
+---
+
+## Manual Format Override
+
+Symptom: JtR fails to recognize the hash or you need to force a specific protocol parser.
+
+Force JtR to use a specific hash format parser
+
+```
+john --format=<SERVICE_NAME> <HASH_FILE>
+```
+
+---
+
+## Viewing Results
+
+Symptom: Need to retrieve cracked credentials from a previous or ongoing session.
+
+Display cracked passwords reliably from the JtR database
+
+```
+john --show <HASH_FILE>
+```

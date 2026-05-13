@@ -1,159 +1,170 @@
-# Attacking Email Services
+## Mail Service Identification
 
-## Initial Reconnaissance & Infrastructure Identification
+**When to use** Starting enumeration for a target domain to determine if email is cloud-hosted or managed via a custom on-premise server.
 
-The first step in attacking email services is identifying the mail server responsible for a domain to determine if the target uses a **cloud-based provider** (e.g., Microsoft 365, G-Suite) or a **custom implementation**. This distinction is critical because cloud providers use modern authentication and unique attack vectors, while custom servers may contain protocol-level misconfigurations.
-
-### 1. Identify Mail Exchanger (MX) Records
-
-Use DNS queries to locate the mail servers for a domain.
-
-|Tool|Command|Goal|
-|:--|:--|:--|
-|`host`|`host -t MX <DOMAIN>`|Identify the mail server handling the domain.|
-|`dig`|`dig mx \|grep "MX" \|
-|`host`|`host -t A <MAIL_SERVER_HOSTNAME>`|Resolve the mail server's IP address.|
-
-### 2. Service Scanning
-
-Once the IP is identified, perform a targeted port scan to find active email protocols.
-
-|Port|Service|Encryption|
-|:--|:--|:--|
-|**TCP/25**|SMTP|Unencrypted|
-|**TCP/465**|SMTP|Encrypted|
-|**TCP/587**|SMTP|Encrypted/STARTTLS|
-|**TCP/110**|POP3|Unencrypted|
-|**TCP/995**|POP3|Encrypted|
-|**TCP/143**|IMAP4|Unencrypted|
-|**TCP/993**|IMAP4|Encrypted|
-
-**Operational Command:**
+**Commands** Query MX records to find the mail handling server for a domain.
 
 ```
-sudo nmap -Pn -sV -sC -p25,110,143,465,587,993,995 <TARGET_IP>
+host -t MX <DOMAIN>
 ```
 
-_Note: Use `-sC` to run default Nmap scripts for service enumeration._
+Use dig for more verbose MX record output.
+
+```
+dig mx <DOMAIN> | grep "MX" | grep -v ";"
+```
+
+Resolve the mail server hostname to an IP address.
+
+```
+host -t A <SERVICE_NAME>
+```
+
+**Tool comparison**
+
+- **host** -> `host -t MX <DOMAIN>` -> use for quick identification of the primary mail handler.
+- **dig** -> `dig mx <DOMAIN>` -> use when detailed record information or manual filtering is required.
+
+**Gotchas** **Cloud providers** (G-Suite, O365, Zoho) implement custom authentication that requires specific attack vectors compared to standard protocol implementations.
 
 ---
 
-## User Enumeration
+## Port Enumeration
 
-Enumerating valid usernames allows for subsequent password spraying or brute-force attacks.
+**When to use** A custom mail server IP has been identified and requires service discovery for standard protocols.
 
-### Technique 1: SMTP Manual Interaction
-
-Use `telnet` to connect to port 25 and test specific SMTP commands.
-
-|Command|Purpose|
-|:--|:--|
-|`VRFY`|Checks the validity of a specific username.|
-|`EXPN`|Expands distribution lists to reveal individual user emails.|
-|`RCPT TO`|Identifies recipients during the email sending process; indicates if a user exists.|
-
-**Workflow for `VRFY`:**
-
-1. Connect to the server: `telnet <TARGET_IP> 25`.
-2. Issue the command: `VRFY <USERNAME>`.
-3. **Decision Point:** A `250` or `252` response typically indicates a valid user, while a `550` error indicates the user is unknown.
-
-### Technique 2: POP3 Manual Interaction
-
-Connect to port 110 to test the `USER` command.
-
-**Workflow for POP3:**
-
-1. Connect: `telnet <TARGET_IP> 110`.
-2. Issue command: `USER <USERNAME>`.
-3. **Decision Point:** An `+OK` response confirms the user exists; `-ERR` indicates they do not.
-
-### Technique 3: Automated Enumeration
-
-Automate the process for large wordlists using `smtp-user-enum`.
+**Commands** Scan for common encrypted and unencrypted mail service ports.
 
 ```
-smtp-user-enum -M <MODE> -U <USER_LIST> -D <DOMAIN> -t <TARGET_IP>
+sudo nmap -Pn -sV -sC -p25,143,110,465,587,993,995 <TARGET_IP>
 ```
 
-- **Modes:** `VRFY`, `EXPN`, or `RCPT`.
-- **Context:** Use when manual testing confirms the server responds to these commands.
+**Dangerous / misconfigured settings**
 
-### Technique 4: Cloud-Specific Enumeration (Office 365)
+- Unencrypted ports (25, 110, 143) exposed to the network.
+- Default nmap scripts identifying **VRFY** or **ETRN** support.
 
-Cloud providers require specialized tools like `o365spray` to abuse custom features for enumeration.
+---
 
-1. **Validate Domain:**
-    
-    ```
-    python3 o365spray.py --validate --domain <DOMAIN>
-    ```
-    
-2. **Enumerate Users:**
-    
-    ```
-    python3 o365spray.py --enum -U <USER_LIST> --domain <DOMAIN>
-    ```
-    
+## Username Enumeration (SMTP)
+
+**When to use** The SMTP service on port 25 is accessible and supports commands like **VRFY**, **EXPN**, or **RCPT TO**.
+
+**Commands** Manually verify a specific user exists using the **VRFY** command.
+
+```
+telnet <TARGET_IP> 25
+VRFY <USERNAME>
+```
+
+Expand a distribution list to identify all members using **EXPN**.
+
+```
+telnet <TARGET_IP> 25
+EXPN <USERNAME>
+```
+
+Enumerate users via the recipient verification process.
+
+```
+telnet <TARGET_IP> 25
+MAIL FROM:test@<DOMAIN>
+RCPT TO:<USERNAME>
+```
+
+Automate the discovery process using a wordlist.
+
+```
+smtp-user-enum -M RCPT -U <FILE_PATH> -D <DOMAIN> -t <TARGET_IP>
+```
+
+**Edge cases**
+
+- **VRFY** might be disabled while **RCPT TO** remains functional for enumeration.
+
+**Gotchas** **Disabled features** like **VRFY** or **EXPN** will prevent manual enumeration; switch to **RCPT TO** or automated tools.
+
+---
+
+## Username Enumeration (POP3)
+
+**When to use** POP3 is active on port 110 and the server implementation reveals account status during the login handshake.
+
+**Commands** Probe for valid usernames using the **USER** command via telnet.
+
+```
+telnet <TARGET_IP> 110
+USER <USERNAME>
+```
+
+**Gotchas** **Protocol behavior** varies by implementation; if the server does not respond with **+OK** or **-ERR** specifically for the **USER** command, this technique fails.
+
+---
+
+## Cloud Enumeration (Office 365)
+
+**When to use** MX records confirm the domain uses **microsoft-com.mail.protection.outlook.com**.
+
+**Commands** Confirm the target domain is actually utilizing Office 365.
+
+```
+python3 o365spray.py --validate --domain <DOMAIN>
+```
+
+Identify valid cloud usernames using a provided wordlist.
+
+```
+python3 o365spray.py --enum -U <FILE_PATH> --domain <DOMAIN>
+```
+
+**Gotchas** **Service changes** by cloud providers often break these tools; ensure they are updated to match current authentication implementations.
 
 ---
 
 ## Password Attacks
 
-After gathering valid usernames, attempt to identify valid credentials.
+**When to use** A list of valid usernames has been collected and a password spray or brute force is required against standard protocols or cloud portals.
 
-### Protocol Brute Force (Custom Servers)
-
-Use `Hydra` against standard protocols like POP3, IMAP, or SMTP.
+**Commands** Password spray a single password against a list of users over POP3.
 
 ```
-hydra -L <USER_LIST> -p '<PASSWORD>' -f <TARGET_IP> <SERVICE>
+hydra -L <FILE_PATH> -p '<PASSWORD>' -f <TARGET_IP> pop3
 ```
 
-- **Service:** `pop3`, `imap`, or `smtp`.
-- **Context:** Effective against custom implementations but often blocked by cloud providers.
-
-### Cloud Password Spraying
-
-For Microsoft 365, use `o365spray` to bypass common blocks associated with standard tools.
+Execute a password spray against Office 365 with lockout protection.
 
 ```
-python3 o365spray.py --spray -U <VALID_USERS_LIST> -p '<PASSWORD>' --count 1 --lockout 1 --domain <DOMAIN>
+python3 o365spray.py --spray -U <FILE_PATH> -p '<PASSWORD>' --count 1 --lockout 1 --domain <DOMAIN>
 ```
 
-- **Strategy:** Use a single password across many users (`--count 1`) and respect lockout timers (`--lockout 1`) to avoid account lockouts.
+**Tool comparison**
+
+- **Hydra** -> `hydra -L <FILE_PATH> -p <PASSWORD> <TARGET_IP> <SERVICE_NAME>` -> prefer for standard SMTP, POP3, and IMAP.
+- **o365spray** -> `python3 o365spray.py --spray ...` -> prefer for Microsoft cloud environments to bypass standard protocol blocks.
+
+**Gotchas** **Cracking protection** is commonly implemented; use small wordlists first to avoid lockouts or IP bans.
 
 ---
 
-## Protocol-Specific Attacks: Open Relay
+## SMTP Open Relay Exploitation
 
-An **open relay** is a misconfigured SMTP server that allows unauthenticated users to send emails to external domains.
+**When to use** Nmap confirms the SMTP server is improperly configured to allow unauthenticated email relaying.
 
-### 1. Identification
-
-Identify if the server allows re-routing of mail from any source.
+**Commands** Verify if the SMTP port allows open relaying.
 
 ```
 nmap -p25 -Pn --script smtp-open-relay <TARGET_IP>
 ```
 
-### 2. Exploitation (Phishing/Spoofing)
-
-If identified, use the server to send spoofed emails, making them appear to originate from the trusted open relay server.
+Exploit an open relay to send a spoofed phishing email.
 
 ```
-swaks --from <SPOOFED_SENDER> --to <TARGET_USER> --header 'Subject: <SUBJECT>' --body '<MESSAGE_CONTENT>' --server <TARGET_IP>
+swaks --from <USERNAME>@<DOMAIN> --to <USERNAME>@<DOMAIN> --header 'Subject: <SERVICE_NAME>' --body '<FILE_PATH>' --server <TARGET_IP>
 ```
 
-- **Attack Implication:** Masks the true source of the email, increasing the success rate of phishing campaigns.
+**Dangerous / misconfigured settings**
 
----
+- SMTP servers configured to allow mail from any source to be re-routed.
+- Lack of **Authentication** requirements for relaying messages.
 
-## Dangerous Misconfigurations
-
-|Setting|Risk|Attack Vector|
-|:--|:--|:--|
-|**Open Relay**|Unauthenticated mail forwarding.|Phishing and email spoofing.|
-|**VRFY/EXPN Enabled**|Information disclosure.|Targeted username enumeration.|
-|**Anonymous Authentication**|Unrestricted access to SMTP.|Unauthorized email sending/enumeration.|
-|**Default POP3 Behavior**|Messages removed from server after download.|Potential data loss for the user; limited access across devices.|
+**Gotchas** **Source masking** makes the email appear as if it originated from the open relay server itself, increasing the success of phishing.

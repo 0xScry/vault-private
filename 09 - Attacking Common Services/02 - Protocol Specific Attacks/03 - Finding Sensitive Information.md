@@ -1,39 +1,35 @@
-# Finding Sensitive Information
+1. Identify and enumerate low-security services like FTP or Storage to find initial leads.,
+2. Document every string, filename, or metadata point, even if it appears insignificant or doesn't work on the local service.,
+3. Re-purpose discovered strings as credentials for communication services like email.
+4. Interrogate email archives specifically for high-value terms like "password" to find credentials for critical backend services.
+5. Authenticate to databases (e.g., MSSQL) using retrieved credentials and leverage internal features to achieve RCE.
 
-## Methodology: Information Gathering & Pivot Workflow
+---
 
-The primary goal of service attacks is often to obtain **Remote Code Execution (RCE)** by meticulously collecting and observing every detail, as seemingly insignificant information can facilitate a chain of access.
+## Service Metadata Harvesting
 
-1. **Initial Enumeration & Anonymous Access**: Attempt anonymous access across all identified services (e.g., FTP, Email, Databases, Storage) to find initial data points or filenames.
-2. **Credential Harvesting from Files**: Inspect accessible directories for filenames that may represent potential usernames or passwords.
-3. **Cross-Service Credential Testing**: Use discovered strings (e.g., filenames) as credentials against other services, such as **email or web portals**, to establish a foothold.
-4. **Internal Information Discovery**: Search compromised communications (emails) for sensitive keywords like "**password**" to identify credentials for high-value targets like **databases**.
-5. **Service Exploitation for RCE**: Access the target database and utilize **built-in functionality** to execute system commands, achieving RCE on the server.
+When to use: Anonymous access is available on a service like FTP and you need to build a username or credential list.
 
-## Target Services Overview
+Commands
 
-These common services are primary targets for discovering sensitive information and automating discovery processes.
+> ⚠️ Gap: Source does not provide CLI syntax for anonymous login or directory listing.
 
-|Service|Potential Information Found|Attack Implication|
-|:--|:--|:--|
-|**FTP**|Filenames, configuration files, anonymous access|Initial username discovery or data leak|
-|**Email**|Credentials, internal procedures, business logic|Discovery of high-privilege service passwords|
-|**Databases**|Sensitive user data, system configuration|Execution of system commands (RCE)|
-|**Storage**|Backups, sensitive documents|Data exfiltration and credential harvesting|
+Gotchas **Ignoring single filenames** or metadata points can stall an engagement; strings that fail locally often serve as valid credentials for secondary services like email,.
 
-## Target Identification & Analysis
+## Communication Service Interrogation
 
-Effective discovery requires understanding the unique nature of the target.
+When to use: You have identified potential usernames/passwords and need to find credentials for high-tier services like databases.
 
-- **Familiarization**: Analyze the target's **business model**, **processes**, **procedures**, and **purpose**.
-- **Data Valuation**: Determine what information is essential to the client and what information is helpful to the attack path.
+Commands
 
-## Dangerous Misconfigurations
+> ⚠️ Gap: Source does not provide tool syntax or protocols for authenticating to and searching email services.
 
-These settings allow for the escalation of privileges or the discovery of sensitive data.
+## Database Command Execution
 
-| Misconfiguration                 | Impact                                                                                     |
-| :------------------------------- | :----------------------------------------------------------------------------------------- |
-| **Anonymous Access**             | Allows unauthorized users to view filenames or download sensitive content.                 |
-| **Stored Cleartext Credentials** | Email content containing passwords allows attackers to pivot to other services like MSSQL. |
-| **Database Command Execution**   | Enabled built-in functionality that allows SQL users to execute OS-level commands.         |
+When to use: You have acquired valid MSSQL credentials and require RCE on the database server.
+
+Commands
+
+> ⚠️ Gap: Source does not provide the specific SQL commands or "built-in functionality" syntax required to trigger command execution.
+
+Edge cases **Target-specific business models** and processes dictate what information is considered "sensitive"; understanding the client's purpose changes what data you prioritize during searches.

