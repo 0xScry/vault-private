@@ -1,98 +1,179 @@
-# Metasploit Database Management
+1. Check PostgreSQL service status to ensure the backend is available.
+2. Initialize the database schema and user if not already configured.
+3. Verify connection status inside the console via `db_status`.
+4. Create a dedicated **Workspace** to prevent cross-contamination of engagement data.
+5. Ingest target data using external XML imports or direct console scanning.
+6. Query `hosts` and `services` tables to filter targets; use `-R` to automatically populate `RHOSTS` for modules.
+7. Track gathered credentials and exfiltrated loot.
+8. Export the workspace to XML for backup or reporting.
 
-Databases in **msfconsole** track results during complex assessments to manage search results, entry points, and discovered credentials. Metasploit uses **PostgreSQL** to provide quick access to scan results and allows the direct configuration of exploit module parameters based on existing findings.
+---
 
-## Initial Configuration
+## Database Initialization
 
-Before using the database, the **PostgreSQL** service must be active and the Metasploit database initialized.
+Need to track results across complex assessments or auto-populate module parameters from findings.
 
-### Operational Workflow: Database Setup
+Check if the backend service is running
 
-1. **Verify PostgreSQL Status**: Check if the service is running on the host machine.
-2. **Start PostgreSQL**: If the service is inactive, start it using **systemctl**.
-3. **Initialize the MSF Database**: Create the database user, schema, and configuration file.
-4. **Launch and Connect**: Start Metasploit and connect to the database simultaneously.
-5. **Verify Connection**: Use internal commands to confirm the database is successfully linked.
+```
+sudo service postgresql status
+```
 
-### Command Reference
+Start the service if inactive
 
-|Command|Purpose|
-|:--|:--|
-|`sudo service postgresql status`|Checks the current status of the PostgreSQL service.|
-|`sudo systemctl start postgresql`|Starts the PostgreSQL RDBMS.|
-|`sudo msfdb init`|Initializes the database, users, and schema.|
-|`sudo msfdb status`|Checks the initialization status of the MSF database.|
-|`sudo msfdb run`|Launches **msfconsole** and connects to the database.|
-|`db_status`|Confirms the connection type and status within the console.|
+```
+sudo systemctl start postgresql
+```
 
-**Note on Troubleshooting**: If initialization fails, ensure Metasploit is updated via `apt update`. If you cannot change passwords or the database is misconfigured, use `msfdb reinit` and restart the PostgreSQL service.
+Initialize the schema and configuration file
 
-## Managing Workspaces
+```
+sudo msfdb init
+```
 
-**Workspaces** function like project folders to **segregate results** by IP, subnet, or domain. This prevents data overlap when conducting multiple assessments or analyzing different network segments.
+Launch console with automatic database connection
 
-### Workspace Commands
+```
+sudo msfdb run
+```
 
-|Command|Action|
-|:--|:--|
-|`workspace`|Lists all current workspaces; the ***** indicates the active one.|
-|`workspace -a <NAME>`|Adds a new workspace to the database.|
-|`workspace <NAME>`|Switches the active context to the specified workspace.|
-|`workspace -d <NAME>`|Deletes a specific workspace.|
-|`workspace -r <OLD_NAME> <NEW_NAME>`|Renames an existing workspace.|
+- **rake aborted!** typically occurs if Metasploit is outdated; run `sudo apt update` before re-initializing.
+- **Database already configured** message indicates the schema exists; check status directly with `sudo msfdb status`.
+
+## Database Troubleshooting
+
+Authentication failures or inability to change the database user password.
+
+Wipe and recreate the database configuration
+
+```
+msfdb reinit
+```
+
+Manual configuration sync if auto-init fails
+
+```
+cp /usr/share/metasploit-framework/config/database.yml ~/.msf4/
+```
+
+Verify connection type is PostgreSQL from within the console
+
+```
+db_status
+```
+
+- **Connection type: none** means the console is not talking to PostgreSQL; check for the existence of `database.yml` in the expected path.
+
+## Workspace Management
+
+Segregate scan results, hosts, and credentials by project, subnet, or domain.
+
+List all existing workspaces
+
+```
+workspace
+```
+
+Create and switch to a new project container
+
+```
+workspace -a <NAME>
+```
+
+Switch active workspace context
+
+```
+workspace <NAME>
+```
+
+Delete a specific workspace and its associated data
+
+```
+workspace -d <NAME>
+```
+
+- **Asterisk (*)** indicates the currently active workspace in the list.
 
 ## Data Ingestion
 
-Information can be added to the database via external file imports or by running tools directly through the console.
+Populate the database with target information from scans.
 
-### Technique: Importing Scan Results
-
-Use when you have existing scan data from third-party tools like **Nmap**. Metasploit prefers the **.xml** format for imports.
+Import Nmap XML or other supported third-party results
 
 ```
-msf6 > db_import <FILENAME>.xml
+db_import <FILE_PATH>
 ```
 
-- **Implication**: Successfully importing results automatically populates the `hosts` and `services` tables.
-
-### Technique: Direct Scanning
-
-Use `db_nmap` to scan targets without exiting or backgrounding the console.
+Execute Nmap and automatically save results to the active workspace
 
 ```
-msf6 > db_nmap -sV -sS <TARGET_IP>
+db_nmap -sV -sS <TARGET_IP>
 ```
 
-- **Implication**: Results are **automatically saved** to the current workspace, allowing immediate interaction with discovered services.
+### Tool comparison
 
-## Data Management and Analysis
+- `db_import`
+    
+    - `db_import <FILE_PATH>`
+    - Prefer when using specialized Nmap flags or importing data from external tools like Nessus.
+- `db_nmap`
+    
+    - `db_nmap <FLAGS> <TARGET_IP>`
+    - Prefer for quick scans without leaving the `msfconsole` environment.
+- **XML format** is the preferred file type for successful data ingestion.
+    
 
-Once data is ingested, use specialized commands to filter and organize findings.
+## Target Selection and Filtering
 
-### Host and Service Management
+Filtering the database to identify attack surfaces and set module options.
 
-- **`hosts`**: Displays a table of addresses, hostnames, and OS information. Use `-R` to automatically set the **RHOSTS** variable based on filtered search results.
-- **`services`**: Lists discovered ports and protocols. Use `-p <PORT>` to search for specific open services across the database.
-
-### Credential and Loot Tracking
-
-- **`creds`**: Visualizes gathered credentials. You can manually add credentials or filter by service and port.
-- **`loot`**: Tracks "owned" data such as hash dumps, passwd files, and shadow files.
-
-|Command Category|Key Parameters|Purpose|
-|:--|:--|:--|
-|**Credentials**|`add user:<USERNAME> password:<PASSWORD>`|Manually store a discovered login.|
-|**Credentials**|`-d -s <SERVICE_NAME>`|Deletes all credentials associated with a specific service (e.g., SMB).|
-|**Loot**|`-t <TYPE>`|Search for specific types of loot (e.g., hashes).|
-
-## Data Retention and Backup
-
-Always **backup database content** after a session to prevent data loss from PostgreSQL service failures.
-
-### Exporting Data
+Show up-hosts and set the global RHOSTS variable
 
 ```
-msf6 > db_export -f xml <FILENAME>.xml
+hosts -u -R
 ```
 
-- **Why it matters**: Exporting ensures that host lists, loot, and vulnerabilities are preserved for later import or reporting.
+Search for specific open ports and set RHOSTS
+
+```
+services -p <PORT> --up -R
+```
+
+Export current workspace data to a backup file
+
+```
+db_export -f xml <FILE_PATH>
+```
+
+- **-R flag** is critical for workflow speed; it pushes all filtered results into the `RHOSTS` parameter of the current module.
+
+## Credentials and Loot
+
+Managing collected passwords, hashes, and files exfiltrated from targets.
+
+Add a credential manually to the database
+
+```
+creds add user:<USERNAME> password:<PASSWORD> realm:<DOMAIN>
+```
+
+Add an NTLM hash to the database
+
+```
+creds add user:<USERNAME> ntlm:<HASH>
+```
+
+List credentials filtered by a specific service
+
+```
+creds -s <SERVICE_NAME>
+```
+
+Manually add a local file to the loot repository
+
+```
+loot -a <TARGET_IP> -t <SERVICE_NAME> -f <FILE_PATH> -i <INFO>
+```
+
+- **creds -d** will **delete** credentials; use with caution when filtering by service.
+- **loot -d** will **delete all** loot matching the specified host and type.

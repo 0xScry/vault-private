@@ -1,94 +1,38 @@
-# Password Protection and Management
+## Cloud-Based Vault Decryption
 
-### Password Manager Fundamentals
+When to use: Assessing Zero-Knowledge systems where the service provider has no access to the plaintext database.
 
-**Password managers** are applications that store credentials and sensitive information in an **encrypted database**, typically secured by a **master password**. They provide a centralized way to maintain strong, unique credentials across multiple services.
+Master key derivation and decryption flow for Bitwarden-style implementations
 
-**Operational Workflow: Database Access**
+```
+PBKDF2-SHA256 -> Master Key -> AES-256
+```
 
-1. User enters **master password**.
-2. System uses **cryptographic hash functions** and **key derivation functions (KDF)** to derive encryption keys.
-3. The database is decrypted, granting access to stored credentials.
+> ⚠️ Gap: Source lacks the specific hashing parameters (iterations) and salt derivation methods required to replicate the master key for offline cracking.
 
----
-
-### Cloud-Based Password Managers
-
-Use when **synchronization** across multiple devices (e.g., Linux, Android, Chrome OS) is required for different websites and applications.
-
-#### Implementation: Zero-Knowledge Encryption
-
-This approach ensures the service provider cannot access user data.
-
-- **Key Derivation:** Encryption keys are derived directly from the master password.
-- **Algorithms:** Often utilizes **PBKDF2-SHA256** for master key derivation and **AES-256 bit** encryption for vault access.
-
-**Common Cloud Providers:**
-
-- Bitwarden
-- 1Password
-- LastPass
-- Dashlane
+**Gotchas** **Zero-Knowledge Encryption** shifts the attack surface entirely to the master password strength and the local implementation of the KDF.
 
 ---
 
-### Local Password Managers
+## Local Vault Security
 
-Use when an organization or individual prefers to avoid third-party services and maintains full responsibility for the **storage location** and **database protection**.
+When to use: Target database is stored on the local filesystem and bypasses third-party cloud synchronization to reduce data transmission risks.
 
-#### Security Mechanisms
+**Dangerous / misconfigured settings**
 
-- **Data Storage:** The encrypted database is stored strictly on the **local system**.
-- **Protection against Precomputed Keys:** Employs KDFs with a **random salt** to hinder dictionary and guessing attacks.
-- **Advanced Local Protections:**
-    - **Memory Protection:** Prevents unauthorized access to data in RAM.
-    - **Keylogger Resistance:** Utilizes secure desktop environments (similar to Windows UAC) to protect input.
+- **Missing random salt** in key derivation functions allows for the use of precomputed keys and facilitates dictionary attacks.
+- **Disabled memory protection** or lack of a secure desktop environment/UAC increases vulnerability to local keyloggers.
 
-**Common Local Providers:**
-
-- KeePassXC
-- KeePass
-- Strongbox
+**Gotchas** **Local storage responsibility** is placed entirely on the user, meaning compromise of the local system or storage location leads to direct database access.
 
 ---
 
-### Comparison of Password Management Approaches
+## Passwordless Authentication
 
-|Feature|Cloud-Based|Local-Based|
-|:--|:--|:--|
-|**Data Storage**|Provider's Cloud|Local System|
-|**Sync Capability**|Native Multi-device Sync|User-managed|
-|**Encryption Responsibility**|Shared (Vendor implementation)|User-led|
-|**Access Model**|Zero-Knowledge Encryption|Local Decryption|
-|**Key Protections**|PBKDF2, AES-256|Hashing, Salting, Memory Protection|
+When to use: Identifying alternatives to knowledge-based factors to mitigate cracking, guessing, and shoulder surfing.
 
----
+**Edge cases**
 
-### Passwordless Authentication
+- **Inherent factors** (biometrics) or **possession factors** (hardware tokens) are required when a knowledge factor (password) is completely removed from the authentication flow.
 
-Use to eliminate the risks associated with **knowledge factors** (passwords), such as theft, sharing, and repeat use.
-
-#### Authentication Factors
-
-- **Possession Factor:** Something the user **has**.
-- **Inherent Factor:** Something the user **is** (biometrics).
-
-#### Common Identity Providers
-
-- Microsoft
-- Auth0
-- Okta
-- Ping Identity
-
----
-
-### Attack Surface and Implications
-
-|Vulnerability|Context/Implication|
-|:--|:--|
-|**Knowledge Factor Reliance**|Vulnerable to **cracking**, **guessing**, and **shoulder surfing**.|
-|**Password Reuse**|Simplifies unauthorized access across multiple services if one is compromised.|
-|**Precomputed Keys**|Mitigated by using **random salts** in local managers.|
-|**Keylogging**|Can capture master passwords; mitigated by **secure desktop environments**.|
-
-_Note: No specific technical commands were provided in the source text for copy-pasting._
+**Gotchas** **Knowledge factor reliance** remains the primary point of failure for legacy systems, necessitating third-party identity providers to enforce passwordless standards.

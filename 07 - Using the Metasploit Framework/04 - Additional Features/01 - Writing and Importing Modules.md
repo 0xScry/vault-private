@@ -1,91 +1,80 @@
-### **Metasploit: Manual Module Import and Development**
 
-#### **Overview**
+## External Module Discovery and Import
 
-While a full framework update ensures the latest modules are present, **manual importing** is preferred when a specific exploit is required without performing a full upgrade or when using modules not yet pushed to the official Metasploit-framework branch.
+Target exploit is verified on ExploitDB but missing from local `search` results, requiring manual installation into the framework directory structure,.
 
----
-
-#### **1. Finding and Filtering Modules**
-
-When a module is missing from the local `msfconsole` search results, use external databases or CLI tools to locate the specific Ruby (`.rb`) script.
-
-- **ExploitDB:** Use the **Metasploit Framework (MSF)** tag to filter for compatible scripts.
-- **Searchsploit:** Use the CLI to find local copies of ExploitDB entries.
-
-|Command|Description|
-|:--|:--|
-|`searchsploit <TERM>`|Search for exploits by name or service.|
-|`searchsploit -t <TERM> --exclude=".py"`|Filter results to show only potential Metasploit-compatible Ruby scripts.|
-
-**Decision Point:** Not all `.rb` files are Metasploit modules; some are standalone Ruby scripts. Verify the file contains Metasploit-specific **mixins** and class structures before attempting to import.
-
----
-
-#### **2. Manual Installation Workflow**
-
-Metasploit requires a specific directory structure to recognize new modules. You must mirror the official framework structure in your local directory.
-
-**Operational Steps:**
-
-1. **Identify the target directory:** The framework resides in `/usr/share/metasploit-framework/modules/` or the hidden user directory `~/.msf4/modules/`.
-2. **Create sub-directories:** If the specific category folders (e.g., `exploits/unix/webapp/`) do not exist in `~/.msf4/`, they must be created manually to match the framework's hierarchy.
-3. **Apply naming conventions:** Modules must use **snake_case** (alphanumeric and underscores). Improper naming prevents `msfconsole` from recognizing the file.
-4. **Copy the module:**
-    
-    ```
-    cp <DOWNLOADED_SCRIPT>.rb /usr/share/metasploit-framework/modules/exploits/<PATH>/<MODULE_NAME>.rb
-    ```
-    
-
----
-
-#### **3. Loading and Initializing Modules**
-
-Once the file is placed, it must be loaded into the current session to be searchable and usable.
-
-|Command|Goal|
-|:--|:--|
-|`msfconsole -m /usr/share/metasploit-framework/modules/`|Launch Metasploit while explicitly loading a specific module directory.|
-|`loadpath /usr/share/metasploit-framework/modules/`|Load new modules from within an active `msfconsole` session.|
-|`reload_all`|Refresh the framework database to include newly added modules.|
-|`use exploit/<PATH>/<MODULE_NAME>`|Select the newly installed module for use.|
-
----
-
-#### **4. Porting and Writing Custom Modules**
-
-When a script (Python, PHP, etc.) needs to be adapted for Metasploit, it is common practice to **repurpose existing modules** as boilerplate code rather than writing from scratch.
-
-**Key Component: Mixins** Mixins provide the methods required for the module to interact with the target. Including only necessary mixins keeps the module efficient.
-
-|Mixin|Function|
-|:--|:--|
-|`Msf::Exploit::Remote::HttpClient`|Methods for acting as an HTTP client against a server.|
-|`Msf::Exploit::PhpEXE`|Generates first-stage PHP payloads.|
-|`Msf::Exploit::FileDropper`|Handles file transfer and post-session cleanup.|
-|`Msf::Auxiliary::Report`|Methods for reporting data back to the MSF database.|
-
-**Module Configuration (The `initialize` Block):** Modify the metadata to match the new exploit, including:
-
-- **Name/Description:** Clear identification of the vulnerability.
-- **References:** CVE numbers and discovery URLs.
-- **Options:** Define required variables using `register_options` (e.g., `TARGETURI`, `USERNAME`, `PASSWORD`).
-- **Payload Info:** Set the `Platform` and `Arch` (e.g., `php`, `ARCH_PHP`).
-
-**Operational Command Reference:**
+Search ExploitDB via CLI for Ruby scripts specifically tagged for Metasploit
 
 ```
-# Example of using a module and viewing its required parameters
-msf6 > use exploit/<PATH>/<MODULE_NAME>
-msf6 exploit(...) > show options
+searchsploit <SERVICE_NAME> -t --exclude=".py"
 ```
 
-**Variables Table:**
+**Tool comparison**
 
-| Parameter | Description                                      |
-| :-------- | :----------------------------------------------- |
-| `RHOSTS`  | `<TARGET_IP>` or CIDR range.                     |
-| `RPORT`   | `<PORT>` (default is often 80 for web exploits). |
-| `USER`    | `<USERNAME>` for authentication.                 |
-| `PASS`    | `<PASSWORD>` for authentication.                 |
+- **searchsploit**
+    
+    - `searchsploit <TERM>`
+    - Prefer for local CLI-based offline discovery.
+- **ExploitDB (Web)**
+    
+    - Filter by **Metasploit Framework (MSF)** tag.
+    - Prefer for visual filtering by author, port, or platform.
+- **snake-case** naming: **Alphanumeric** characters and **underscores** only; **dashes** will cause **module recognition failure**.
+    
+- Directory structure: Ensure the local path in `~/.msf4/modules/` mirrors the official `/usr/share/metasploit-framework/modules/` hierarchy (e.g., `exploits/<PLATFORM>/<SERVICE>/`) or the module will not be found.
+    
+
+> ⚠️ Gap: Manual module imports into `/usr/share/metasploit-framework/` usually require **root privileges**, which may lead to **permission denied** errors if using a standard user account.
+
+---
+
+## Custom Module Loading
+
+New `.rb` module has been moved to the local filesystem and needs to be registered within the active MSF instance without a full framework upgrade,.
+
+Launch MSF and automatically include a custom module directory
+
+```
+msfconsole -m /usr/share/metasploit-framework/modules/
+```
+
+Load modules from a specific path while the console is already running
+
+```
+loadpath /usr/share/metasploit-framework/modules/
+```
+
+Force MSF to refresh the module database to pick up newly added files
+
+```
+reload_all
+```
+
+**Gotchas**
+
+- **Ruby script compatibility**: Not all `.rb` files are MSF modules; scripts lacking **Metasploit-compatible code** will fail to load.
+
+---
+
+## Porting Standalone Exploits to MSF
+
+Converting a Python or PHP PoC into a Ruby module by utilizing existing framework mixins and boilerplate code,.
+
+Identify an existing module to use as a functional template
+
+```
+ls /usr/share/metasploit-framework/modules/exploits/<PLATFORM>/<PROTOCOL>/ | grep <SERVICE_NAME>
+```
+
+**Dangerous / misconfigured settings**
+
+- Indentation: MSF modules **must use hard tabs**; spaces may cause **syntax or loading errors**.
+- Unnecessary Mixins: Including unused mixins like `Msf::Exploit::FileDropper` adds overhead; remove them if the exploit doesn't handle file cleanup,.
+
+**Edge cases**
+
+- **Custom Network Environments**: Proprietary code or non-standard protocols may require writing a module from scratch using the `Msf::Exploit::Remote` class if no boilerplate exists.
+
+**Gotchas**
+
+- **Validation failure**: Ensure `register_options` includes all required variables (e.g., `TARGETURI`, `USER`, `PASSWORDS`) or the module will fail to execute,.

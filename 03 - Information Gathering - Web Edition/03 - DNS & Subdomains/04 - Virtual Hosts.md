@@ -1,82 +1,46 @@
-# Virtual Host Discovery and Enumeration
+## Manual Virtual Host Mapping
 
-### Virtual Hosting Fundamentals
+When to use: Targeted virtual host lacks a **DNS record** or is restricted to internal access.
 
-Web servers (Apache, Nginx, IIS) use **virtual hosting** to host multiple websites or applications on a single server sharing the same IP address. The server distinguishes between these sites by leveraging the **HTTP Host header** included in every browser request. The Host header acts as a switch, telling the web server which specific content or **DocumentRoot** to serve.
-
-### VHost Fuzzing Methodology
-
-**VHost fuzzing** is used to discover public and non-public subdomains or virtual hosts by testing various hostnames against a known IP address.
-
-- **When to use:** Use this technique when you suspect a server hosts multiple sites that are not listed in public **DNS records**.
-- **Why it matters:** Many subdomains are only accessible internally or through specific configurations and will not appear in standard DNS lookups.
-- **Manual Bypass:** If a virtual host lacks a DNS record, you can manually map the domain name to the IP address in your local **hosts file** to bypass DNS resolution.
-
-### Virtual Host Discovery Tools
-
-Specialized tools automate the process of probing a target server by systematically testing different Host headers.
-
-|Tool|Description|Key Features|
-|:--|:--|:--|
-|**Gobuster**|Multi-purpose tool for brute-forcing.|Fast; supports multiple HTTP methods and custom wordlists.|
-|**Feroxbuster**|Rust-based implementation.|High speed, supports recursion and wildcard discovery.|
-|**ffuf**|Flexible web fuzzer.|Highly customizable wordlist input and filtering.|
-
-### Operational Workflow: Gobuster VHost Discovery
-
-To identify valid virtual hosts, Gobuster sends HTTP requests with varying Host headers and analyzes the server responses.
-
-1. **Prepare the target URL:** Identify the base IP or domain and the port.
-2. **Select a wordlist:** Use a specialized DNS or subdomain wordlist.
-3. **Execute the scan:** Use the `vhost` mode to test the headers.
-4. **Analyze Results:** Note valid hosts (e.g., Status 200) for further investigation.
-
-#### Command Reference
-
-|Parameter|Description|
-|:--|:--|
-|`vhost`|Sets Gobuster to virtual host enumeration mode.|
-|`-u`|Specifies the target URL.|
-|`-w`|Specifies the path to the wordlist.|
-|`--append-domain`|Appends the base domain to each wordlist entry (required in newer versions).|
-
-**Basic VHost Enumeration:**
+Commands Map a domain name to a known IP address manually by editing the local hosts file to **bypass DNS resolution**
 
 ```
-gobuster vhost -u http://<TARGET_IP> -w <PATH_TO_WORDLIST> --append-domain
+<TARGET_IP> <DOMAIN>
 ```
 
-**Enumeration on Custom Port:**
+Gotchas **Missing DNS records** will prevent the browser or tools from reaching the target unless the local hosts file is updated.
+
+---
+
+## Automated Virtual Host Discovery
+
+When to use: Fuzzing the **Host header** to identify public or non-public subdomains and distinct domains sharing a single IP address.
+
+Commands Standard VHost brute-forcing using Gobuster with mandatory domain appending for correct hostname construction
 
 ```
-gobuster vhost -u http://<DOMAIN>:<PORT> -w <PATH_TO_WORDLIST> --append-domain
+gobuster vhost -u http://<DOMAIN> -w <FILE_PATH> --append-domain
 ```
 
-### Attack Implications and Risks
+Tool comparison
 
-- **Discovery:** Successful fuzzing unlocks access to internal applications, staging environments, or hidden administrative panels.
-- **Detection Risk:** This process generates significant network traffic and is likely to be detected by **Intrusion Detection Systems (IDS)** or **Web Application Firewalls (WAF)**.
+- Gobuster -> `gobuster vhost -u <URL> -w <WORDLIST>` -> prefer for dedicated VHost enumeration mode and speed.
+- Feroxbuster -> Rust-based implementation -> prefer when requiring **recursion**, wildcard discovery, or flexible filtering.
+- ffuf -> Web fuzzer -> prefer for highly **customizable wordlist input** and advanced response filtering.
 
-### Server-Side Configuration (Apache Example)
+Edge cases Newer versions of Gobuster require the `--append-domain` flag to function correctly; older versions may append the base domain by default or lack the flag entirely.
 
-Virtual hosts can be configured as subdomains or entirely different domains on the same infrastructure.
+Gotchas **High traffic generation** during discovery frequently triggers **IDS/WAF detection**. **Failure to use --append-domain** in recent Gobuster versions prevents the tool from constructing the full virtual hostnames required for accurate enumeration.
 
-|Configuration Component|Purpose|
-|:--|:--|
-|`<VirtualHost *:80>`|Defines the IP and port for the virtual host.|
-|`ServerName`|The domain name the server looks for in the Host header.|
-|`DocumentRoot`|The directory containing the files for that specific domain.|
+---
 
-**Example Name-Based Configuration:**
+## Name-Based Virtual Host Configuration
 
-```
-<VirtualHost *:80>
-    ServerName www.<DOMAIN_ONE>.com
-    DocumentRoot /var/www/<DOMAIN_ONE>
-</VirtualHost>
+When to use: Analyzing server-side routing where the **Host header** acts as a switch to determine which **DocumentRoot** is served.
 
-<VirtualHost *:80>
-    ServerName www.<DOMAIN_TWO>.org
-    DocumentRoot /var/www/<DOMAIN_TWO>
-</VirtualHost>
-```
+Dangerous / misconfigured settings
+
+- Multiple distinct domains (e.g., .com, .org, .net) hosted on a single IP using the same port.
+- Apache `VirtualHost` blocks where `ServerName` is the only differentiator for sensitive content.
+
+Gotchas **Incorrect Host headers** will cause the web server to serve the default site or fail to route to the intended application content.

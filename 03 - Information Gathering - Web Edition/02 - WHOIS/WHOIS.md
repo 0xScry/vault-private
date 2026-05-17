@@ -1,88 +1,57 @@
-# WHOIS Reconnaissance
-
-**WHOIS** is a query and response protocol used to access databases storing information about registered internet resources, including **domain names**, **IP address blocks**, and **autonomous systems**.
-
-### Methodology: Why WHOIS Matters
-
-During the **reconnaissance phase**, WHOIS data provides insights into an organization's digital footprint and potential vulnerabilities. It functions as a directory to identify the owners or parties responsible for specific online assets.
+1. Query primary domains to identify the **Registrant Organization** for cross-referencing parent companies or subsidiaries.
+2. Map **name servers** to identify where the target manages external DNS.
+3. Extract **IP address blocks** and **autonomous systems** to define the organization's network boundaries.
+4. Pivot on identified infrastructure patterns, such as hosting providers or specific IP ranges, to discover secondary domains.
 
 ---
 
-### Tool Installation
+## Utility Installation
 
-Before performing lookups, ensure the utility is installed on your Linux-based attack machine.
+When to use: Tool is missing from the local environment.
 
-1. **Update local package index**:
-    
-    ```
-    sudo apt update
-    ```
-    
-2. **Install the whois package**:
-    
-    ```
-    sudo apt install whois -y
-    ```
-    
+Update repositories and install the client
 
----
+```
+sudo apt update && sudo apt install whois -y
+```
 
-### Operational Workflow: Executing Lookups
+## Domain and Registrar Profiling
 
-The primary method for gathering this data is through the command-line interface.
+When to use: Establishing the baseline for a target domain, registrar, and administrative contact data.
 
-|Command|Purpose|
-|:--|:--|
-|`whois <DOMAIN>`|Performs a lookup for the specified domain to retrieve registration and ownership details.|
-
-**Execution Example:**
+Query the WHOIS database for record details
 
 ```
 whois <DOMAIN>
 ```
 
----
+**Gotchas** **Incomplete attribution** occurs when records fail to identify individual employees or internal vulnerabilities, requiring enrichment through secondary recon.
 
-### Analysis and Scenario Context
+## Network Boundary Mapping
 
-The value of WHOIS data depends on the investigation context. Analysts use results to identify **red flags** or map out **threat actor infrastructure**.
+When to use: Moving beyond domains to identify owned **IP address blocks** and **autonomous systems** linked to the target.
 
-#### 1. Phishing Investigation
+Query for IP block and network resource ownership
 
-Use WHOIS when an email security gateway flags suspicious links.
+```
+whois <TARGET_IP>
+```
 
-- **Goal:** Determine if a domain is part of a malicious campaign.
-- **Red Flags:**
-    - **Recent registration dates** (indicates temporary infrastructure).
-    - **Hidden registrant information** (privacy shields used to mask identity).
-    - **Suspicious hosting providers**.
+**Gotchas** **Database latency** results in stale data; verify the "Last update of whois database" field to ensure information is current.
 
-#### 2. Malware Analysis & C2 Identification
+## Organizational Asset Correlation
 
-Use WHOIS when a system is infected and communicating with a remote server.
+When to use: Using a confirmed **Registrant Organization** or infrastructure pattern to find additional assets or profile TTPs.
 
-- **Goal:** Gain insights into **Command-and-Control (C2)** infrastructure.
-- **Outcome:** Identifying the hosting provider allows for the notification of malicious activity or the discovery of "bulletproof" hosting environments.
+Verify the organization name and registration dates
 
-#### 3. Threat Intelligence
+```
+whois <DOMAIN>
+```
 
-Use WHOIS to track sophisticated threat groups over time.
+**Edge cases**
 
-- **Goal:** Uncover patterns in registration habits to build a profile of **Tactics, Techniques, and Procedures (TTPs)**.
-- **Outcome:** Generates **Indicators of Compromise (IOCs)** that help organizations detect and block future attacks.
+- **Hidden registrant** info and recent creation dates typically indicate phishing or burner infrastructure rather than corporate assets.
+- **Suspicious hosting** or "bulletproof" servers identified via WHOIS indicate high-risk command-and-control (C2) infrastructure.
 
----
-
-### Data Points and Interpretation
-
-A standard WHOIS record contains several critical fields for analysis:
-
-|Field|Significance|
-|:--|:--|
-|**Registrar WHOIS Server**|The server where the domain information is officially maintained.|
-|**Creation/Updated Dates**|Helps establish the age and longevity of the domain.|
-|**Registrant Organization**|Identifies the legal owner of the domain (e.g., Meta Platforms, Inc.).|
-|**Name Servers**|Identifies the DNS infrastructure supporting the domain.|
-|**Registrar Abuse Contact**|Provides a channel to report malicious use of the domain.|
-
-**Note on Limitations:** WHOIS records may not directly identify individual employees or specific technical vulnerabilities. It must be combined with other reconnaissance techniques for a comprehensive view of a target's digital footprint.
+**Gotchas** **Redacting registrant** data via privacy services can mask organizational ownership, necessitating pivots on **name servers** or IP ranges to maintain the map.

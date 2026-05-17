@@ -1,63 +1,88 @@
-# Detection & Prevention Methodology
+### METHODOLOGY
 
-## MITRE ATT&CK Framework
+1. **Initial Access Phase**: Target public-facing web applications, misconfigured SMB/authentication protocols, or known vulnerabilities in bastion hosts to establish a foothold.
+2. **Execution Phase**: Deploy payloads via web browser command injection, PowerShell one-liners using **PsExec**, or Metasploit exploits.
+3. **Command & Control (C2) Phase**: Blend traffic with standard protocols (HTTP/S, DNS, NTP) or common applications (Slack, Discord, MS Teams) to avoid detection.
+4. **Network Evasion**: Check for **Deep Packet Inspection (DPI)** or cloud-based L7 visibility. Use encrypted channels to prevent command reconstruction from cleartext traffic like **Netcat**.
+5. **Host Persistence**: Monitor for active command-line logging and **Windows Defender** status before executing local administrative commands.
 
-The **MITRE ATT&CK Framework** provides a knowledge base of adversary tactics and techniques based on real-world observations. Understanding these allows for better identification of active shells and payload execution.
+---
 
-### Notable Tactics and Techniques
+## Network Visibility and Traffic Analysis
 
-|Tactic|Description|Attack Implications|
-|:--|:--|:--|
-|**Initial Access**|Compromising public-facing hosts (Web Apps), misconfigured services (SMB), or authentication protocol bugs.|Provides a foothold in the network; often occurs on a **bastion host**.|
-|**Execution**|Running attacker-supplied code via PowerShell one-liners, Metasploit exploits, or remote file calls.|Facilitates shell access and interactive control over the target.|
-|**Command & Control (C2)**|Establishing interactive access using standard ports/protocols (HTTP/S, DNS, NTP) or allowed apps (Slack, Discord).|Allows for follow-on actions and data exfiltration within the victim network.|
+**When to use** Detecting unencrypted callbacks or high-frequency NetFlow to suspicious ports like **4444** after payload execution.
 
-## Network Visibility and Detection
+**Commands** View cleartext TCP streams to reconstruct executed commands and directory listings
 
-Payloads must communicate over the network to be effective. **Network visibility** is essential to identify these communications.
+```
+wireshark
+```
 
-### Detection Techniques
+**Tool comparison**
 
-1. **Baseline Traffic:** Utilize cloud-based network controllers to establish a baseline of traffic usage, protocols, and applications. Any **deviation from the norm** becomes highly visible.
-2. **Deep Packet Inspection (DPI):** Use network security appliances to act as a network-level anti-virus. DPI can detect and block payloads even if they execute successfully on a host.
-3. **NetFlow Analysis:** Monitor flow data to identify suspicious connections, such as frequent communication on non-standard or known malicious ports (e.g., `<PORT>`).
-4. **Protocol Inspection:** Identify unencrypted traffic (e.g., **Netcat**). Unencrypted streams allow defenders to capture and read every command sent between the `<ATTACK_IP>` and `<TARGET_IP>`.
+- Netbrain
+    - `netbrain`
+    - Prefer for interactive visual topologies combining documentation and remote management.
+- Draw.io
+    - `draw.io`
+    - Prefer for static manual diagramming of network traffic flow.
 
-### Persistence Detection via Command Monitoring
+**Dangerous / misconfigured settings**
 
-When NetFlow data is paired with **command-line logging**, defenders can identify malicious actions like unauthorized user creation.
+- Unencrypted cleartext channels (Netcat) for bind or reverse shells.
+- Standard ports (80, 443) used for non-standard, unencrypted traffic.
 
-|Goal|Command|
-|:--|:--|
-|Create a new user for persistence|`net user <USERNAME> <PASSWORD> /add`|
-|Elevate user privileges|`net localgroup administrators <USERNAME> /add`|
+**Gotchas** **Deep Packet Inspection** can act as network-level anti-virus and block payloads even if host-level execution succeeds.
 
-## End Device Protection
+## Host-Level Execution and Persistence
 
-**End devices** (workstations, servers, etc.) are primary targets because they provide the CLI interfaces used for administration and automation.
+**When to use** Establishing long-term access after gaining an initial foothold through code execution.
 
-### Windows Hardening Measures
+**Commands** Create a new user for persistence
 
-- **Windows Defender:** Must remain enabled to prevent payload execution and shell establishment.
-- **Defender Firewall:** Keep all profiles (Domain, Private, and Public) active. Only allow exceptions for approved applications via change management.
-- **Patch Management:** Ensure all hosts receive updates immediately after release to close known vulnerabilities.
-- **Logging:** Implement **command-line logging** to triage events and determine if an incident has occurred.
+```
+net user <USERNAME> <PASSWORD> /add
+```
 
-## Mitigation Reference
+Elevate user privileges to local administrator
 
-### Dangerous Misconfigurations
+```
+net localgroup <SERVICE_NAME> <USERNAME> /add
+```
 
-|Misconfiguration|Risk|
-|:--|:--|
-|**Unencrypted Protocols**|Allows full visibility of attacker commands via packet capture.|
-|**Disabled AV/Firewall**|Removes the primary barrier to payload execution and callback establishment.|
-|**Lack of Logging**|Prevents defenders from distinguishing between admin activity and malicious shells.|
+**Dangerous / misconfigured settings**
 
-### Security Controls
+- Disabled **Windows Defender** or firewall profiles (Domain, Private, Public).
+- Lack of **command-line logging** for auditing administrative actions.
+- Missing patch management for critical OS updates.
 
-|Control|Function|
-|:--|:--|
-|**Network Segmentation**|Limits the "blast radius" and prevents lateral movement.|
-|**IDS/IPS**|Detects and prevents known malicious signatures and behaviors at the network level.|
-|**Endpoint Protection (EDR/AV)**|Identifies and blocks malicious files and scripts on the host.|
-|**Deep Packet Inspection**|Inspects the contents of packets to identify hidden or obfuscated threats.|
+**Edge cases**
+
+- **Server-side AV** might be disabled or have exceptions due to performance overhead, providing a window for shell establishment.
+
+**Gotchas** **Command-line logging** paired with NetFlow data allows defenders to quickly triage malicious user creation regardless of the account name used.
+
+## Defense-in-Depth and Hardening
+
+**When to use** Identifying potential roadblocks or mitigation strategies that prevent exploit success.
+
+**Tool comparison**
+
+- Windows Defender
+    - `Windows Security`
+    - Prefer for native endpoint protection and integrated firewall management.
+- L7 Cloud Controllers (Cisco Meraki, Palo Alto)
+    - `<VENDOR_PORTAL>`
+    - Prefer for baseline traffic monitoring and detecting protocol deviations at the network edge.
+
+**Dangerous / misconfigured settings**
+
+- Over-privileged service accounts violating the **Principle of Least Privilege**.
+- Flat network architecture without **Network Segmentation**.
+- Allowing unapproved applications through the firewall without a change management process.
+
+**Gotchas** **Application Whitelisting** can prevent the execution of unauthorized shell scripts and payloads even if they are successfully delivered to the host.
+
+> ⚠️ Gap: Source mentions "PowerShell one-liner via PsExec" but lacks the specific syntax for the bypass or execution flags required to avoid immediate AV/EDR triggers.
+
+> ⚠️ Gap: Source notes that DPI can act as network AV but does not specify which encryption protocols (SSL/TLS) are required to bypass specific inspection signatures.

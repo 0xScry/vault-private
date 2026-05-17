@@ -1,97 +1,97 @@
-# **Credential Hunting in Network Shares**
+## Methodology
 
-Corporate network shares are essential for collaboration but frequently contain **plaintext credentials** or **configuration files** left behind by employees. Attackers hunt these shares to uncover hidden secrets and escalate privileges.
-
-### **Initial Manual Discovery (Windows)**
-
-Before using automated tools, perform basic command-line searches to identify sensitive file patterns.
-
-|Command|Purpose|
-|:--|:--|
-|`Get-ChildItem -Recurse -Include *. \<TARGET_IP><SHARE_NAME> \|Select-String -Pattern `|
-
----
-
-### **Automated Hunting from Windows**
-
-#### **1. Snaffler**
-
-**Snaffler** is a C# tool designed to run on a **domain-joined machine**. It automatically identifies accessible shares and searches for "interesting" files that may contain credentials.
-
-**Operational Workflow:**
-
-1. Execute a basic search to let the tool discover DFS paths and computers from Active Directory.
-2. Review the output for **red-coded** findings, which indicate high-probability credential matches (e.g., `unattend.xml` files containing administrator passwords).
-
-**Command Reference:**
-
-|Command|Description|
-|:--|:--|
-|`Snaffler.exe -s`|Executes a basic automated search across the domain.|
-
-**Attack Implications:**
-
-- Automatically discovers **DFS paths** and all computers in the domain.
-- Identifies readable shares and flags sensitive data like `AdministratorPassword` tags in configuration files.
-
-#### **2. PowerHuntShares**
-
-**PowerHuntShares** is a PowerShell script that provides a comprehensive audit of SMB shares. It is ideal when a **visual report** is needed for analysis or when the attack machine is **not domain-joined**.
-
-**Scenario Context:**
-
-- Use when manual review of large data sets is required via an **HTML report**.
-- **Warning:** This tool can take **hours to run** in large environments.
-
-**Command Reference:**
-
-|Command|Parameter|Description|
-|:--|:--|:--|
-|`Invoke-HuntSMBShares -Threads <NUMBER> -OutputDirectory <PATH>`|`-Threads`|Sets the speed of enumeration.|
-||`-OutputDirectory`|Location for the HTML summary and CSV files.|
-
-**Capabilities:**
-
-- Checks for **TCP 445** availability.
-- Identifies shares with **excessive privileges** or high-risk directory listings.
-- Generates **timelines** for last written and last accessed files.
+1. Access established to an internal environment where shared folders likely contain plaintext credentials or configuration files.
+2. If on a domain-joined Windows host:
+    - Run Snaffler to automatically discover shares and interesting files via AD.
+    - Run PowerHuntShares if an HTML report and permission analysis are required.
+3. If on Linux or a non-domain Windows host:
+    - Use MANSPIDER via Docker to scan remote shares for specific content patterns.
+    - Use NetExec with the spider module to target specific shares or search for content patterns across the target.
+4. If automated tools are restricted:
+    - Execute manual PowerShell searches using recursion and pattern matching.
+5. Review all output for **false positives**.
 
 ---
 
-### **Automated Hunting from Linux**
+## Windows Credential Hunting
 
-#### **1. MANSPIDER**
+### Manual Share Searching
 
-**MANSPIDER** is used to scan SMB shares remotely from a Linux host. It is best executed via **Docker** to ensure all dependencies are met.
+Corporate environments use network shares for file storage; these often contain sensitive data like configuration files. Basic command-line searches provide a starting point before using automated tools.
 
-**Scenario Context:**
+Execute recursive search for specific extensions and patterns on a target share
 
-- Use when you do not have access to a domain-joined Windows host or prefer remote scanning.
+```
+Get-ChildItem -Recurse -Include *.<EXT> \\<TARGET_IP>\<SHARE_NAME> | Select-String -Pattern <PATTERN>
+```
 
-**Command Reference:**
+### Snaffler
 
-|Command|Description|
-|:--|:--|
-|`docker run --rm -v ./manspider:/root/.manspider blacklanternsecurity/manspider <TARGET_IP> -c '<PATTERN>' -u '<USERNAME>' -p '<PASSWORD>'`|Scans the target IP for file content matching the specified pattern using provided credentials.|
+A C# tool for domain-joined machines that automates share discovery and identifies interesting files.
 
-#### **2. NetExec (NXC)**
+Run basic automated search across the domain
 
-**NetExec** includes a **spidering** function to search through shares for specific content.
+```
+Snaffler.exe -s
+```
 
-**Command Reference:**
+- **Tool comparison**
+    
+    - Snaffler
+        - `Snaffler.exe -s`
+        - Prefer when on a domain-joined machine and full domain computer/share discovery is needed.
+    - PowerHuntShares
+        - `Invoke-HuntSMBShares`
+        - Prefer when an HTML summary report or detailed permission/risk analysis is required.
+- **Gotchas**
+    
+    - **False positives** are common and require manual review of the output.
 
-|Command|Description|
-|:--|:--|
-|`nxc smb <TARGET_IP> -u <USERNAME> -p '<PASSWORD>' --spider <SHARE_NAME> --content --pattern "<PATTERN>"`|Spiders a specific share on the target to find files containing the defined string pattern.|
+### PowerHuntShares
+
+A PowerShell script that enumerates domain computers, checks for open SMB ports, and identifies shares with excessive privileges.
+
+Automate share enumeration and generate an HTML report
+
+```
+Invoke-HuntSMBShares -Threads 100 -OutputDirectory <FILE_PATH>
+```
+
+- **Gotchas**
+    - **Execution time** can reach several hours in large environments.
 
 ---
 
-### **Risk Assessment: High-Risk Share Configurations**
+## Linux Credential Hunting
 
-|Configuration Issue|Impact|
-|:--|:--|
-|**Excessive Privileges**|Allows unauthorized users to read or write sensitive configuration/credential files.|
-|**Unprotected `unattend.xml`**|Often contains plaintext or obfuscated `AdministratorPassword` values.|
-|**Sensitive File Formats**|Files like `.wim` (deployment images) or configuration files often reside in `ADMIN$` or `C$` shares and may leak secrets.|
+### MANSPIDER
 
-**Methodology Note:** Automated tools generate significant output and frequent **false positives**; manual review of "loot" directories and HTML reports is always required to verify findings.
+A tool for scanning SMB shares remotely from Linux, best executed via Docker to manage dependencies.
+
+Search for specific content patterns across remote shares with valid credentials
+
+```
+docker run --rm -v ./manspider:/root/.manspider blacklanternsecurity/manspider <TARGET_IP> -c '<PATTERN>' -u '<USERNAME>' -p '<PASSWORD>'
+```
+
+### NetExec
+
+A multi-purpose tool that includes spidering capabilities to search through network shares.
+
+Spider a specific share for files containing a specific pattern
+
+```
+nxc smb <TARGET_IP> -u <USERNAME> -p '<PASSWORD>' --spider <SHARE_NAME> --content --pattern "<PATTERN>"
+```
+
+- **Tool comparison**
+    
+    - MANSPIDER
+        - `docker run ... blacklanternsecurity/manspider <TARGET_IP> -c '<PATTERN>'`
+        - Prefer for remote scans from Linux when loot needs to be downloaded locally.
+    - NetExec
+        - `nxc smb <TARGET_IP> --spider <SHARE_NAME> --content`
+        - Prefer for quick spidering of specific shares or when already using NetExec for other protocol tasks.
+- **Gotchas**
+    
+    - **Incomplete results** may occur if searching by file content without the `--content` flag in NetExec.

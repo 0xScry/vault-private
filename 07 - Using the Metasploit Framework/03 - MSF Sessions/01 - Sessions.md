@@ -1,74 +1,78 @@
-# Metasploit: Session and Job Management
+## METHODOLOGY
 
-Metasploit provides the flexibility to manage multiple modules simultaneously through **Sessions** and **Jobs**, allowing for persistent control and background execution of tasks.
-
-## Session Management
-
-**Sessions** are dedicated control interfaces for deployed modules. When a session is placed in the background, the connection to the target host persists, allowing you to switch between different modules without losing access.
-
-### Interacting with Sessions
-
-|Command|Purpose|
-|:--|:--|
-|`[CTRL] + [Z]`|**Backgrounds** the current session from the prompt.|
-|`background`|Meterpreter-specific command to **background** the session.|
-|`sessions`|Lists all **active sessions**, including ID, type, and connection info.|
-|`sessions -i <SESSION_ID>`|**Interacts** with the specified session ID.|
-
-### Operational Workflow: Transitioning to Post-Exploitation
-
-Use this workflow when you have established a stable communication channel and need to run additional tools (e.g., scanners or credential gatherers) on the compromised host.
-
-1. **Background** the successful exploit session using `[CTRL] + [Z]` or `background`.
-2. **Search** for the desired post-exploitation or auxiliary module.
-3. **Load** the module and view requirements via `show options`.
-4. **Set the session number** (e.g., `set SESSION <SESSION_ID>`) to link the module to your backgrounded session.
-5. **Run** the module to execute the task on the target.
-
-**Note:** Common **post-exploitation** archetypes include local exploit suggesters, internal network scanners, and credential gatherers.
+1. If a stable communication channel is established, background the session to free the console for additional modules.
+2. Identify the session ID via the active sessions list.
+3. To perform post-exploitation (gathering credentials, internal scanning), select a module and bind it to the existing session ID.
+4. If a module requires a port currently occupied by another task, use job management to terminate the conflicting process.
+5. For persistent listeners or exploits that should run without blocking the console, execute them as background jobs.
 
 ---
 
-## Job Management
+## Session Management
 
-**Jobs** are tasks running in the background. This is critical for maintaining listeners or active exploits that must run independently of your current terminal interaction.
+When to use: Managing multiple active module interfaces or switching from a foothold to post-exploitation while maintaining a persistent connection.
 
-### Why Use Jobs?
-
-- **Port Management:** If you terminate a session using `[CTRL] + [C]`, the port may remain in use. Use the `jobs` command to terminate the specific task and **free the port** for a different module.
-- **Persistence:** Tasks converted into jobs run seamlessly in the background, even if a specific session disappears.
-
-### Command Reference: Jobs
-
-|Command|Purpose|
-|:--|:--|
-|`exploit -j`|Launches an exploit as a **background job**.|
-|`run -j`|Launches an auxiliary module as a **background job**.|
-|`jobs -l`|**Lists** all currently running background jobs.|
-|`jobs -h`|Displays the **help menu** for job manipulation.|
-|`kill <JOB_ID>`|**Terminates** a specific job by its index number.|
-|`jobs -K`|**Kills** all currently running jobs.|
-
-### Execution Example
-
-When starting a handler to listen for incoming connections, running it as a job ensures your terminal remains free for other tasks.
+List all active communication channels to identify target IDs
 
 ```
-msf6 exploit(multi/handler) > exploit -j
-[*] Exploit running as background job <JOB_ID>.
-[*] Started reverse TCP handler on <ATTACK_IP>:<PORT>
+sessions
 ```
 
-### Active Job Listing Reference
-
-Use `jobs -l` to identify which payloads are tied to specific ports.
+Interact with a specific established session
 
 ```
-msf6 exploit(multi/handler) > jobs -l
-
-### Jobs
-
-Id  Name                    Payload                    Payload opts
---  ----                    -------                    ------------
-0   Exploit: multi/handler  generic/shell_reverse_tcp  tcp://<ATTACK_IP>:<PORT>
+sessions -i <SESSION_ID>
 ```
+
+Background a Meterpreter session from within the channel
+
+```
+background
+```
+
+Background any active session via keyboard shortcut
+
+```
+[CTRL] + [Z]
+```
+
+**Gotchas** **Sessions can die** if the communication channel tears down during payload runtime.
+
+## Post-Exploitation Execution
+
+When to use: Running local exploit suggesters, credential gatherers, or network scanners after establishing a stable session.
+
+1. Background the current session to return to the MSF prompt.
+2. Select the desired post-exploitation module.
+3. Set the session target in the module options.
+4. Execute the module against the existing channel.
+
+## Background Jobs
+
+When to use: Running exploits or handlers that must persist in the background or when a port must be freed from a previous task.
+
+Run an exploit or handler as a background task immediately
+
+```
+exploit -j
+```
+
+List all currently active tasks running in the background
+
+```
+jobs -l
+```
+
+Terminate a specific job by its index to free up system ports
+
+```
+kill <JOB_ID>
+```
+
+Terminate every active background job simultaneously
+
+```
+jobs -K
+```
+
+**Gotchas** **Ports will remain in use** and block new modules if an active exploit is terminated with `[CTRL] + [C]` instead of being killed via the jobs command.

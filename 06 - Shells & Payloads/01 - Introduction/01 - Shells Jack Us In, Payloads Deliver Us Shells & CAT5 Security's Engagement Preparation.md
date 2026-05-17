@@ -1,40 +1,46 @@
-# Shells & Payloads Fundamentals
+## Methodology
 
-### Shell Overview
+1. **Enumeration and identification** — locate promising exploits or security bypasses.
+2. **Payload selection** — determine the method to deliver a remote shell session to the target.
+3. **Shell execution** — trigger the exploit (e.g., EternalBlue) to obtain interactive CLI access.
+4. **Post-exploitation** — leverage shell for file transfers, privilege escalation, and pivoting.
+5. **Persistence** — establish a permanent foothold to maintain access over time.
 
-A **shell** is a program providing an interface to input instructions and view text output (e.g., **Bash, Zsh, cmd, PowerShell**). In a security context, a shell is the result of exploiting a vulnerability or bypassing security to gain **interactive access** to a host.
+---
 
-### Operational Value: Why Establish a Shell
+## Interactive Shell Access
 
-Establishing a shell is a primary goal following enumeration and exploit identification because it provides **remote control** over the target operating system.
+**When to use** Direct access to the OS, system commands, and file system is required after identifying a vulnerability. Use CLI over VNC/RDP when **stealth and speed** are prioritized, as graphical shells are **easier to detect**.
 
-|Benefit|Impact on Engagement|
-|:--|:--|
-|**System Access**|Grants direct access to the OS, system commands, and the file system.|
-|**Post-Exploitation**|Unlocks vectors for **privilege escalation**, **pivoting**, and **file transfers**.|
-|**Persistence**|Allows the tester to maintain access over time to complete objectives.|
-|**Efficiency**|Enables the use of attack tools, data exfiltration, and automated actions.|
-|**Stealth**|CLI shells are harder to detect than graphical shells (VNC/RDP) and faster to navigate.|
+**Commands** The source lists shell environments but lacks specific execution strings for reverse/bind connections.
 
-### Shell Perspectives & Environments
+> ⚠️ Gap: Specific syntax for Bash, Zsh, cmd, and PowerShell shell invocation is not provided in the source text.
 
-Techniques for gaining and using shells vary based on the environment and the entry vector.
+**Gotchas** **Limited access** — failing to establish a shell session restricts activity to basic enumeration and prevents escalation or pivoting.
 
-|Perspective|Description|
-|:--|:--|
-|**Computing**|The text-based userland environment used to submit instructions (e.g., Bash, PowerShell).|
-|**Exploitation**|The result of triggering a vulnerability to gain interactive access (e.g., using **EternalBlue** to gain a `cmd` prompt).|
-|**Web Shell**|A script uploaded via a web vulnerability (like file upload) that allows an attacker to issue instructions and access files through a **browser window**.|
+## Web Shell Deployment
 
-### Operational Workflow: Gaining Access
+**When to use** A vulnerability exists allowing file or script uploads to the target. Minimum requirement is the ability to call the uploaded script via a browser to issue instructions.
 
-1. **Enumeration:** Identify promising exploits on the target.
-2. **Exploitation:** Trigger a vulnerability to bypass security measures.
-3. **Payload Delivery:** Use a **payload** to establish the remote shell session.
-4. **Interactive Control:** Gain access to the CLI to begin post-exploitation tasks.
+**Commands** Control the web shell by calling the script within a browser window.
 
-### Attack Implications
+```
+http://<TARGET_IP>/<FILE_PATH>
+```
 
-- **Access Level:** Without a shell, a tester is strictly limited in their ability to interact with the target.
-- **Detection:** Command-line interfaces are preferred over graphical interfaces to avoid detection and increase operational speed.
-- **Automation:** CLI access allows for the automation of complex attack chains.
+**Edge cases** Web shells are specifically used to interact with the underlying host via HTTP when standard OS shell ports may be blocked.
+
+**Gotchas** **Destructive actions** — web shells can potentially perform irreversible damage to the underlying host if commands are not validated.
+
+## Payload Delivery
+
+**When to use** A vulnerability has been identified and a remote shell session must be established.
+
+**Commands** Example scenario: triggering EternalBlue on a Windows host to gain a cmd prompt.
+
+> ⚠️ Gap: Specific payload generation tools and exploit execution commands are not defined in the source.
+
+**Dangerous / misconfigured settings**
+
+- **Graphical shells (VNC/RDP)** — easier for defenders to notice and slower to navigate than CLI.
+- **Manual repetition** — failing to automate actions on the CLI increases engagement time.

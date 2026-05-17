@@ -1,39 +1,60 @@
-### Password Policy Fundamentals
 
-A successful identity protection strategy requires two distinct components: **Definition** (outlining rules and expectations) and **Enforcement** (the technology used to ensure compliance). The scope of a policy must cover the entire **password lifecycle**, including creation, storage, management, and transmission.
 
-### Standards and Industry Evolution
+If registration or password reset functions are accessible:
 
-While organizations often follow established IT security standards to define a baseline, compliance alone does not guarantee security.
+1. Attempt to set a known weak password (e.g., `password123`) to trigger **policy disclosure** error messages.
+2. Document minimum length, character types, and **blacklisted words** leaked by the application error.
+3. Identify if the policy allows **company-specific keywords** or predictable mutations.
+4. If password expiration is confirmed, target accounts for **trailing digit increments** (e.g., `01` to `02`).
 
-|Feature|Legacy Approach|Modern Recommendation|Why It Matters|
-|:--|:--|:--|:--|
-|**Password Expiration**|Mandatory changes (e.g., every 90 days).|**Disabled expiration** (unless compromise is confirmed).|Frequent forced changes lead users to adopt **predictable, weak patterns** (e.g., Incrementing a number at the end).|
+---
 
-### Common Policy Weaknesses & Mitigations
+## Identifying Policy Complexity
 
-Standard complexity requirements can still result in weak passwords if users follow common mutation patterns.
+Triggering error messages during password setup to map **complexity requirements** and **enforcement** mechanisms.
 
-|Identified Weakness|Attack Implication|Mitigation|
-|:--|:--|:--|
-|**Predictable Mutations**|Users change "01" to "02" upon expiration.|Disable forced expiration; implement **history requirements**.|
-|**Contextual Keywords**|Use of company name or industry terms.|Implement **blacklisted words** (e.g., company name, local landmarks).|
-|**OSINT Vulnerability**|Passphrases based on personal info (pets, hobbies).|Use random word generation or obscure phrases; avoid publicly discoverable info.|
+Verify password strength against crack time estimations:
 
-### Implementation & Enforcement Methodology
+```
+PasswordMonster
+```
 
-Once a policy is defined, it must be technically enforced and communicated to the organization.
+Generate compliant but secure strings:
 
-1. **Technical Integration**: Use identity management systems to enforce compliance.
-    - **Scenario**: For Windows-centric environments, use **Active Directory Password Policy GPOs** to ensure users cannot bypass requirements.
-2. **Communication**: Formalize the policy and distribute it to all employees.
-3. **Process Standardization**: Create procedures to ensure the policy is applied consistently across all organizational platforms.
+```
+1Password Password Generator
+```
 
-### Password Generation Techniques
+**Dangerous / misconfigured settings**
 
-|Method|Security Benefit|Potential Drawback|
-|:--|:--|:--|
-|**Randomly Generated**|High complexity; resistant to **password spraying** and cracking.|Difficult to remember without a **password manager**.|
-|**Passphrases**|Long length increases crack time (e.g., lyrics, sentences).|Vulnerable to **OSINT** if the phrase is personally relevant.|
+- Mandating **password expiration** which forces users into predictable pattern shifts.
+- Relying on **industry standards** as a sole security measure rather than a baseline.
+- Failure to implement **blacklists** for company names, seasons, or common words.
 
-**Decision Point**: Use a **password manager** to generate and store high-entropy passwords, which balances the need for complexity with the human limitation of remembering multiple unique credentials.
+**Edge cases**
+
+- Users leveraging **passphrases** or lyrics may bypass entropy checks but remain vulnerable to **OSINT-based** wordlist attacks.
+
+**Gotchas**
+
+- **Policy compliance** does not equal security; users will often choose the path of least resistance like `<COMPANY_NAME>01!` to satisfy complexity.
+
+> ⚠️ Gap: Source lacks **CLI enumeration syntax** for querying GPO password policies via RPC or LDAP.
+
+## Active Directory Enforcement
+
+Targeting environment-wide policy application when Active Directory is the identity provider.
+
+Apply or inspect policy via Group Policy Objects:
+
+```
+Active Directory Password Policy GPO
+```
+
+**Dangerous / misconfigured settings**
+
+- Lack of technical **enforcement** tools or failure to apply GPOs across all application tiers.
+
+**Gotchas**
+
+- **Discrepancies in application** occur if procedures do not guarantee the policy is applied to every authentication endpoint in the organization.

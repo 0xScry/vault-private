@@ -1,104 +1,60 @@
-# Metasploit Framework: Plugins and Mixins
+1. Verify the plugin exists in the framework directory.
+2. If absent, copy the desired `.rb` file into the local plugin path using elevated privileges.
+3. Launch `msfconsole` and initialize the plugin to expose new command sets to the API.
+4. Call the plugin-specific help menu to identify available interactions.
 
-## Metasploit Plugins
+---
 
-**Plugins** are third-party software integrated into the framework to **automate repetitive tasks**, **add new commands**, and **extend functionality**.
+## Plugin Management
 
-### Why Use Plugins
+**When to use** — Need to integrate 3rd party software (Nessus, OpenVAS, SQLMap) directly into `msfconsole` to automate documentation and data import/export into the current database.
 
-- **Centralized Documentation**: Plugins automatically document results into the active database, making hosts, services, and vulnerabilities available at a glance.
-- **Workflow Efficiency**: They eliminate the need to manually cycle between different software to import/export results or re-enter parameters.
-- **Framework Manipulation**: Plugins work directly with the API, allowing for the manipulation of the entire framework.
-
-### Managing Plugins
-
-#### 1. List Available Plugins
-
-Check the default installation directory to identify available plugins.
+Check available plugins in the default installation directory
 
 ```
 ls /usr/share/metasploit-framework/plugins
 ```
 
-#### 2. Load a Plugin
-
-Initialize the plugin within the `msfconsole`. A successful load displays a greeting and specific usage instructions.
+Initialize a plugin within the framework
 
 ```
-load <PLUGIN_NAME>
+load <SERVICE_NAME>
 ```
 
-#### 3. Access Plugin Help
-
-Plugins often extend the help menu or provide a specific help command to list available interactions.
+Verify successful loading and view extended command set
 
 ```
-<PLUGIN_NAME>_help
+<SERVICE_NAME>_help
 ```
 
-OR
+**Gotchas** **Failed to load plugin** occurs if the `.rb` file is missing from the directory or the path provided is incorrect.
+
+## Custom Plugin Installation
+
+**When to use** — Required functionality or specific tradecraft scripts (e.g., `pentest.rb`) are missing from the default Parrot OS or Metasploit updates.
+
+Copy a new Ruby plugin file to the framework plugin directory
 
 ```
-help
+sudo cp <FILE_PATH>.rb /usr/share/metasploit-framework/plugins/<FILE_PATH>.rb
 ```
 
-### Command Reference: Nessus Plugin
-
-|Command|Help Text|
-|:--|:--|
-|`nessus_connect`|Connect to a Nessus server|
-|`nessus_logout`|Logout from the Nessus server|
-|`nessus_login`|Login into the connected Nessus server with a different username|
-|`nessus_user_del`|Delete a Nessus User|
-|`nessus_user_passwd`|Change Nessus Users Password|
-|`nessus_policy_list`|List all policies|
-|`nessus_policy_del`|Delete a policy|
-
-### Installing Custom Plugins
-
-While popular plugins are updated via the OS distribution (e.g., Parrot OS), custom plugins must be installed manually.
-
-**Workflow:**
-
-1. **Download** the plugin `.rb` file from the developer's page.
-2. **Move** the file to the Metasploit plugins directory: `/usr/share/metasploit-framework/plugins/`.
-3. **Ensure** the file has proper permissions.
-4. **Load** the plugin in `msfconsole` to verify installation.
-
-**Operational Example (Installing `pentest.rb`):**
+Load the custom plugin to extend the main help menu with new command categories
 
 ```
-# Clone the repository containing the plugin
-git clone <PLUGIN_REPO_URL>
-
-# Copy the plugin file to the MSF directory
-sudo cp ./<REPO_NAME>/<PLUGIN_FILE>.rb /usr/share/metasploit-framework/plugins/<PLUGIN_FILE>.rb
-
-# Launch MSF and load the plugin
-msfconsole -q
-msf6 > load <PLUGIN_FILE>
+load <FILE_PATH>
 ```
 
-### Failure Conditions
+**Gotchas** **Permissions errors** will prevent the framework from accessing newly copied `.rb` files in the restricted `/usr/share/` path.
 
-If a plugin is not installed correctly or the file path is incorrect, `msfconsole` will return a **"Failed to load plugin"** error indicating it cannot find the file.
+## Framework Mixins
 
----
+**When to use** — Developing custom Ruby scripts where you need to include functionality from other classes without using formal inheritance.
 
-## Metasploit Mixins
+Include a module within a script to provide specific methods
 
-**Mixins** are a feature of the Ruby language that provide **flexibility** to both script creators and users within the framework.
+```
+include <MODULE_NAME>
+```
 
-### Technical Concept
-
-- **Inclusion vs. Inheritance**: Mixins are classes that act as methods for use by other classes without being a parent class. This is defined as **inclusion** rather than inheritance.
-- **Implementation**: They are implemented using the `include` keyword followed by the module name.
-- **Decision Logic**: While not critical for basic assessments, Mixins are essential for users looking to perform **complex customization** of Metasploit.
-
-### Pre-installed Tooling and Mixins
-
-|Category|Examples|
-|:--|:--|
-|**Scanning/Assessment**|nMap, NexPose, Nessus|
-|**Post-Exploitation**|Mimikatz (V.1), Stdapi, Incognito|
-|**Advanced Extensions**|Railgun Priv, Darkoperator's Mixins|
+**Edge cases** Mixins are primarily for developers; for standard assessments, **focus on plugins** for framework manipulation.

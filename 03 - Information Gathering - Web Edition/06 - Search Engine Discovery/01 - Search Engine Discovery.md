@@ -1,54 +1,144 @@
-### **Search Engine Discovery & Google Dorking**
+## Methodology - Search Engine Discovery
 
-Search engine discovery, or **OSINT (Open Source Intelligence) gathering**, uses search algorithms to extract data not readily visible on a website,. This technique is used during **web reconnaissance** to uncover employee information, sensitive documents, hidden login pages, and exposed credentials.
-
-#### **Operational Methodology**
-
-1. **Identify the Target Scope:** Use operators to limit results to the specific target domain.
-2. **Filter for Sensitive Assets:** Apply specific terms (e.g., "password", "confidential") or file extensions (e.g., .pdf, .docx) to find internal documentation.
-3. **Refine Results:** Use Boolean logic (AND, OR, NOT) or wildcards to narrow the search to high-value pages like admin panels or login portals,.
-4. **Analyze Cached Data:** If a page is modified or inaccessible, view the version stored by the search engine to see previous content.
+1. Identify the primary public surface area of `<DOMAIN>` to establish a baseline of indexed content.
+2. Isolate administrative or non-public interfaces by filtering out known standard pages using exclusion operators.
+3. Target high-value file extensions and specific naming conventions to find leaked internal documentation or configurations.
+4. Search for sensitive strings and exact phrases in page bodies and titles to identify potential credential exposures or "password reset" functionality.
+5. Pivot to historical or related data if live content is restricted or has been recently modified to evade detection.
 
 ---
 
-#### **Search Operator Reference**
+## Initial Domain Scoping
 
-|Operator|Purpose|Example Command|
-|:--|:--|:--|
-|**site:**|Limits results to a specific website or domain.|`site:<DOMAIN>`|
-|**inurl:**|Finds pages with a specific term in the URL (e.g., identifying panels).|`inurl:login`|
-|**filetype:**|Searches for files of a particular type (e.g., configuration or docs).|`filetype:pdf`|
-|**intitle:**|Finds pages with specific terms in the HTML title.|`intitle:"confidential report"`|
-|**intext: / inbody:**|Searches for terms within the body text of pages.|`intext:"password reset"`|
-|**cache:**|Displays the cached version of a webpage to see past content.|`cache:<DOMAIN>`|
-|**link:**|Identifies other websites linking to the target.|`link:<DOMAIN>`|
-|**related:**|Discovers websites similar to the target.|`related:<DOMAIN>`|
-|**info:**|Provides a summary of information about a webpage.|`info:<DOMAIN>`|
-|**numrange: / ..**|Searches for numbers within a specific numerical range,.|`site:<DOMAIN> 1000..2000`|
-|**allintext:**|Requires all specified words to appear in the body text.|`allintext:admin password reset`|
-|**allinurl:**|Requires all specified words to appear in the URL.|`allinurl:admin panel`|
-|**allintitle:**|Requires all specified words to appear in the title.|`allintitle:confidential report 2023`|
-|**" "**|Searches for an exact phrase.|`"information security policy"`|
-|*****|Wildcard representing any character or word.|`site:<DOMAIN> filetype:pdf user* manual`|
-|**- / NOT**|Excludes specific terms from the results,.|`site:<DOMAIN> -inurl:sports`|
+**When to use** — Base reconnaissance requires mapping the publicly accessible footprint of `<DOMAIN>` where standard crawling might be blocked or restricted.
 
----
+List all publicly indexed pages associated with a specific target domain
 
-#### **Logic and Precision Operators**
+```
+site:<DOMAIN>
+```
 
-|Logic|Action|Example Command|
-|:--|:--|:--|
-|**AND**|Narrows results by requiring all terms to be present.|`site:<DOMAIN> AND (inurl:admin OR inurl:login)`|
-|**OR**|Broadens results by including pages with any of the terms.|`"linux" OR "ubuntu" OR "debian"`|
+Exclude a specific subdomain or path from the results to find hidden or non-standard entries
 
----
+```
+site:<DOMAIN> -site:<SERVICE_NAME>.<DOMAIN>
+```
 
-#### **Google Dorking (Google Hacking)**
+- **Gotchas** — **Search engines do not index all information**, meaning a lack of results is not a confirmation that the resource does not exist.
 
-Google Dorking is a specialized technique using the operators above to specifically uncover **security vulnerabilities**, **sensitive information**, or **hidden content**.
+## Interface Discovery
 
-**Note on Attack Implications:**
+**When to use** — Mapping the directory structure or locating management portals like login pages and admin panels when no direct links exist on the homepage.
 
-- **Technique Unlock:** Successfully utilizing dorks can provide a foothold via hidden login panels or direct access to sensitive data via exposed files,.
-- **Failure Conditions:** Search engines do not index all information; data that is deliberately hidden or protected by the site owner may not appear in results.
-- **External Resource:** For complex queries, refer to the **Google Hacking Database (GHDB)**.
+Identify pages with specific administrative terms in the URL path
+
+```
+inurl:<SERVICE_NAME>
+```
+
+Force results to contain multiple specific terms in the URL for more precise portal discovery
+
+```
+allinurl:admin panel
+```
+
+Locate specific management or classification terms in the HTML title tag
+
+```
+intitle:"admin panel"
+```
+
+- **Edge cases** — Use `allintitle:` when looking for specific dated reports or multi-word administrative headers to reduce noise from generic titles.
+- **Gotchas** — **Syntax varies slightly between engines**, which can result in inconsistent behavior if shifting between Google, Bing, or DuckDuckGo.
+
+## Sensitive File Harvesting
+
+**When to use** — Identifying exposed internal documents, manuals, or configuration files that are indexed but not intended for public access.
+
+Search for specific file extensions on the target domain to find downloadable assets
+
+```
+site:<DOMAIN> filetype:pdf
+```
+
+Use wildcards to find variations of user or technical manuals that may contain environment details
+
+```
+site:<DOMAIN> filetype:pdf user* manual
+```
+
+- **Tool comparison**
+    - `filetype:` → `filetype:pdf` → Use for standard extension-based discovery.
+    - `ext:` → `ext:pdf` → Use as a functional equivalent depending on engine support.
+
+## Credential and String Hunting
+
+**When to use** — Searching for leaked credentials, "password reset" pages, or specific "confidential" markings within the body text of indexed pages.
+
+Locate specific sensitive strings within the body text of a page
+
+```
+intext:"password reset"
+```
+
+Search for multiple specific terms in the body text to narrow down leak locations
+
+```
+allintext:admin password reset
+```
+
+Target exact phrases to find specific policy documents or internal headers
+
+```
+"information security policy"
+```
+
+- **Gotchas** — **Data may be deliberately hidden or protected**, causing operators to return no results even if the sensitive strings exist on the server.
+
+## Historical and External Pivot
+
+**When to use** — Accessing content that has been removed from the live site or identifying third-party relationships and similar organizations.
+
+View the indexed version of a page to see content that may have been recently updated or deleted
+
+```
+cache:<DOMAIN>
+```
+
+Identify external websites that are linking back to the target domain to find business partners
+
+```
+link:<DOMAIN>
+```
+
+Discover websites with similar content or functionality to the target
+
+```
+related:<DOMAIN>
+```
+
+> ⚠️ Gap: **Search engine discovery relies entirely on third-party indexing**, so any technique targeting the live environment will fail if the site uses `robots.txt` or `noarchive` tags to prevent indexing.
+
+## Advanced Filtering and Logic
+
+**When to use** — Refining broad result sets to exclude noise or targeting specific numerical data like version numbers or price ranges.
+
+Narrow results by requiring all specified terms to be present across different fields
+
+```
+site:<DOMAIN> AND (inurl:admin OR inurl:login)
+```
+
+Identify pages containing numerical ranges such as versions, dates, or prices
+
+```
+site:<DOMAIN> "price" 100..500
+```
+
+Alternative range search for finding specific numerical identifiers
+
+```
+site:<DOMAIN> numrange:1000-2000
+```
+
+- **Edge cases** — Use the `-` sign instead of `NOT` for more compact exclusion queries when searching for non-standard content paths.

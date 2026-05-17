@@ -27,16 +27,30 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "12 - Using Web Proxies/01 - Getting started/01 - Getting started.md",
+                "file": "0.01 - Something for me/Something for me/My prompt.md",
                 "mode": "preview",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "01 - Getting started"
+              "title": "My prompt"
+            }
+          },
+          {
+            "id": "d0e52ae6fdbbc8e9",
+            "type": "leaf",
+            "state": {
+              "type": "markdown",
+              "state": {
+                "file": "03 - Information Gathering - Web Edition/05 - Crawling/04 - Creepy Crawlies.md",
+                "mode": "preview",
+                "source": false
+              },
+              "icon": "lucide-file",
+              "title": "04 - Creepy Crawlies"
             }
           }
         ],
-        "currentTab": 1
+        "currentTab": 2
       }
     ],
     "direction": "vertical"
@@ -199,43 +213,43 @@
       "bases:Create new base": false
     }
   },
-  "active": "99b9fe616d3d91de",
+  "active": "d0e52ae6fdbbc8e9",
   "lastOpenFiles": [
-    "12 - Using Web Proxies/02 - Web Proxy/02 - Intercepting Web Requests.md",
-    "12 - Using Web Proxies/01 - Getting started/01 - Getting started.md",
-    "12 - Using Web Proxies/02 - Web Proxy/01 - Proxy Setup.md",
-    "12 - Using Web Proxies/02 - Web Proxy/04 - Automatic Modification.md",
-    "08 - Password Attacks/04 - Extracting Passwords from Windows Systems/05 - Attacking Active Directory and NTDS.dit.md",
-    "08 - Password Attacks/04 - Extracting Passwords from Windows Systems/06 - Credential Hunting in Windows.md",
-    "0.01 - Something for me/Something for me/My prompt.md",
-    "08 - Password Attacks/04 - Extracting Passwords from Windows Systems/04 - Attacking Windows Credential Manager.md",
-    "08 - Password Attacks/04 - Extracting Passwords from Windows Systems/03 - Attacking LSASS.md",
-    "08 - Password Attacks/04 - Extracting Passwords from Windows Systems/02 - Attacking SAM, SYSTEM, and SECURITY.md",
-    "08 - Password Attacks/04 - Extracting Passwords from Windows Systems/01 - Windows Authentication Process.md",
-    "08 - Password Attacks/03 - Remote Password Attacks/02 - Spraying, Stuffing, and Defaults.md",
-    "08 - Password Attacks/03 - Remote Password Attacks/01 - Network Services.md",
-    "08 - Password Attacks/02 - Password Cracking Techniques/06 - Cracking Protected Archives.md",
-    "08 - Password Attacks/02 - Password Cracking Techniques/05 - Cracking Protected Files.md",
-    "08 - Password Attacks/02 - Password Cracking Techniques/04 - Writing Custom Wordlists and Rules.md",
-    "08 - Password Attacks/02 - Password Cracking Techniques/03 - Introduction to Hashcat.md",
-    "08 - Password Attacks/02 - Password Cracking Techniques/02 - Introduction to John The Ripper.md",
-    "08 - Password Attacks/02 - Password Cracking Techniques/01 - Introduction to Password Cracking.md",
+    "03 - Information Gathering - Web Edition/05 - Crawling/01 - Crawling.md",
+    "12 - Using Web Proxies/03 - Web Fuzzer/01 - Burp Intruder.md",
     "08 - Password Attacks/01 - Introduction/Introduction.md",
-    "10 - Pivoting, Tunneling, and Port Forwarding/06 - Double Pivots/01 - RDP and SOCKS Tunneling with SocksOverRDP.md",
-    "09 - Attacking Common Services/08 - SMTP/01 - Attacking Email Services.md",
-    "09 - Attacking Common Services/08 - SMTP/02 - Latest Email Service Vulnerabilities.md",
-    "09 - Attacking Common Services/07 - DNS/02 - Latest DNS Vulnerabilities.md",
-    "09 - Attacking Common Services/07 - DNS/01 - Attacking DNS.md",
-    "09 - Attacking Common Services/06 - RDP/02 - Latest RDP Vulnerabilities.md",
+    "02 - Footprinting/01 - Introduction/01 - Introduction.md",
+    "03 - Information Gathering - Web Edition/01 - Introduction/01 - Introduction.md",
+    "03 - Information Gathering - Web Edition/07 - Web Archives/01 - Web Archives.md",
+    "03 - Information Gathering - Web Edition/08 - Automating Recon/01 - Automating Recon.md",
+    "0.01 - Something for me/Something for me/My prompt.md",
+    "0.01 - Something for me/Something for me/Something i need.md",
+    "03 - Information Gathering - Web Edition/06 - Search Engine Discovery/01 - Search Engine Discovery.md",
+    "03 - Information Gathering - Web Edition/05 - Crawling/04 - Creepy Crawlies.md",
+    "03 - Information Gathering - Web Edition/05 - Crawling/03 - Well-Known URIs.md",
+    "03 - Information Gathering - Web Edition/05 - Crawling/02 - robots.txt.md",
+    "03 - Information Gathering - Web Edition/04 - Fingerprinting/01 - Fingerprinting.md",
+    "03 - Information Gathering - Web Edition/03 - DNS & Subdomains/01 - DNS & Digging DNS.md",
+    "03 - Information Gathering - Web Edition/03 - DNS & Subdomains/02 - Subdomains & Subdomain Bruteforcing.md",
+    "03 - Information Gathering - Web Edition/03 - DNS & Subdomains/03 - DNS Zone Transfers.md",
+    "03 - Information Gathering - Web Edition/03 - DNS & Subdomains/04 - Virtual Hosts.md",
+    "03 - Information Gathering - Web Edition/03 - DNS & Subdomains/05 - Certificate Transparency Logs.md",
+    "03 - Information Gathering - Web Edition/02 - WHOIS/WHOIS.md",
+    "04 - Vulnerability Assessment/05 - Reporting/01 - Reporting.md",
+    "12 - Using Web Proxies/04 - Web Scanner/01 - Burp Scanner.md",
+    "12 - Using Web Proxies/03 - Web Fuzzer/02 - ZAP Fuzzer.md",
+    "12 - Using Web Proxies/04 - Web Scanner",
+    "12 - Using Web Proxies/03 - Web Fuzzer/Untitled.md",
+    "12 - Using Web Proxies/03 - Web Fuzzer/Untitled",
+    "04 - Vulnerability Assessment/04 - OpenVAS/01 - OpenVAS.md",
+    "04 - Vulnerability Assessment/03 - Nessus/01 - Nessus.md",
+    "12 - Using Web Proxies/03 - Web Fuzzer",
     "12 - Using Web Proxies/02 - Web Proxy",
     "12 - Using Web Proxies/01 - Getting started",
     "12 - Using Web Proxies",
     "0.01 - Something for me/Something for me",
     "11 - Active Directory Enumeration & Attacks/12 - Defensive Considerations",
     "11 - Active Directory Enumeration & Attacks/11 - Breaking Down Boundaries",
-    "11 - Active Directory Enumeration & Attacks/10 - Why So Trusting?",
-    "11 - Active Directory Enumeration & Attacks/09 - Stacking The Deck",
-    "11 - Active Directory Enumeration & Attacks/08 - An ACE in the Hole",
-    "11 - Active Directory Enumeration & Attacks/07 - Cooking with Fire"
+    "11 - Active Directory Enumeration & Attacks/10 - Why So Trusting?"
   ]
 }

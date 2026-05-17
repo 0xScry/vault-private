@@ -1,90 +1,62 @@
-# Web Technology Fingerprinting
+## Banner Grabbing
 
-**Fingerprinting** identifies the technical signatures of web servers, operating systems, and software components. This allows for **tailored attacks** by exploiting vulnerabilities specific to the identified technology stack.
+Need to extract server software versions and redirection logic from HTTP headers without downloading page content.
 
-## Automated Fingerprinting Tools
+Fetch headers to identify web server and OS.
 
-Use these tools to combine various techniques to identify CMSs, frameworks, and infrastructure components.
+```
+curl -I <DOMAIN>
+```
 
-|Tool|Description|Key Features|
-|:--|:--|:--|
-|**Wappalyzer**|Browser extension/online service|Identifies CMSs, frameworks, and analytics tools.|
-|**BuiltWith**|Web technology profiler|Provides detailed technology stack reports.|
-|**WhatWeb**|Command-line tool|Uses a vast database of signatures.|
-|**Nmap**|Network scanner|Uses NSE scripts for specialized fingerprinting.|
-|**Netcraft**|Web security service|Reports on hosting providers and security posture.|
-|**wafw00f**|WAF identification tool|Detects the presence, type, and configuration of WAFs.|
+Follow redirections manually to identify CMS-specific headers like `X-Redirect-By`.
 
----
+```
+curl -I https://<DOMAIN>
+```
 
-## Methodology: Manual Banner Grabbing
+**Gotchas** **Redirects hide technologies** if only the initial 301/302 response is inspected without following the chain to the final 200 OK destination.
 
-**Goal:** Extract software versions and underlying technology directly from HTTP headers.
+## WAF Detection
 
-1. **Fetch Initial Headers:** Use `curl` to fetch only the head of the response.
+Identify active filtering solutions that may block or alert on reconnaissance probes.
+
+Execute automated signature-based detection for Web Application Firewalls.
+
+```
+wafw00f <DOMAIN>
+```
+
+**Gotchas** **Active WAF presence** will filter or block subsequent automated scans, requiring a shift to evasive techniques.
+
+## Software Identification and Vulnerability Scanning
+
+Identifying outdated software, insecure files, and CMS entry points through automated fingerprinting modules.
+
+Run Nikto limited to software identification to minimize noise.
+
+```
+nikto -h <DOMAIN> -Tuning b
+```
+
+- Wappalyzer: Browser extension → prefer for quick visual profiling while browsing.
     
-    ```
-    curl -I <DOMAIN>
-    ```
+- BuiltWith: Web service → prefer for deep historical technology stack reports.
     
-2. **Follow Redirects:** If the response is a `301 Moved Permanently`, repeat the command for the new location specified in the `Location` header to find the final technology stack.
-3. **Analyze Headers:** Look for `Server` (software/OS) and `X-Redirect-By` (CMS indicators like WordPress).
-
-**Attack Implications:** Identifying specific versions (e.g., `Apache/2.4.41 (Ubuntu)`) allows you to search for version-specific exploits.
-
----
-
-## Methodology: WAF Detection
-
-**Goal:** Determine if a Web Application Firewall (WAF) is present to avoid request blocking and prepare for evasion.
-
-1. **Install Tool:**
+- WhatWeb: CLI tool → prefer for automated scanning via vast signature databases.
     
-    ```
-    pip3 install git+https://github.com/EnableSecurity/wafw00f
-    ```
+- Nmap: Network scanner → prefer when combining port scanning with NSE-based fingerprinting.
     
-2. **Scan Target:**
+- Netcraft: Web service → prefer for identifying hosting providers and security posture.
     
-    ```
-    wafw00f <DOMAIN>
-    ```
+- Missing `Strict-Transport-Security` header on TLS sites.
     
-
-**Attack Implications:** If a WAF (e.g., Wordfence) is detected, reconnaissance attempts may be filtered. You must **adapt techniques** to bypass or evade detection mechanisms.
-
----
-
-## Methodology: Software & Vulnerability Identification
-
-**Goal:** Use automated scanners to find outdated software, insecure configurations, and common file paths.
-
-### Nikto Operational Workflow
-
-1. **Installation (if required):**
+- Missing `X-Content-Type-Options` header allowing MIME-type sniffing.
     
-    ```
-    sudo apt update && sudo apt install -y perl
-    git clone https://github.com/sullo/nikto
-    cd nikto/program
-    chmod +x ./nikto.pl
-    ```
+- `Content-Encoding` set to `deflate` enabling BREACH attacks.
     
-2. **Execute Fingerprinting Scan:** Use `-Tuning b` to restrict the scan to Software Identification modules only, reducing unnecessary noise.
+- Exposed `license.txt` or `wp-json` paths confirming software presence.
     
-    ```
-    nikto -h <DOMAIN> -Tuning b
-    ```
+- Cookies set without the `httponly` flag.
     
 
-### Analysis of Common Misconfigurations
-
-Scanners like Nikto identify specific security weaknesses that unlock further attack vectors.
-
-|Finding|Impact/Implication|
-|:--|:--|
-|**Outdated Software**|Apache versions (e.g., 2.4.41) may have known CVEs.|
-|**Missing Security Headers**|Missing `HSTS` or `X-Content-Type-Options` reduces client-side protection.|
-|**Common Paths Found**|Identification of `/wp-login.php` or `/license.txt` confirms CMS type (WordPress).|
-|**Insecure Cookies**|Cookies created without `httponly` flags can be accessed via scripts.|
-|**BREACH Attack**|`Content-Encoding: deflate` may indicate vulnerability to BREACH.|
+**Gotchas** **Junk HTTP methods** returning valid responses can cause false positives in automated scanners.

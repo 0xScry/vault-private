@@ -1,61 +1,74 @@
-### ASPX Web Shells: Antak
+## Methodology
 
-**Active Server Page Extended (ASPX)** is a file type designed for Microsoft's **ASP.NET Framework**. On servers running this framework, web forms are converted to HTML on the server side. Attackers can exploit this by uploading an ASPX-based web shell to gain control over the underlying **Windows operating system**.
-
-#### Tool Overview: Antak WebShell
-
-**Antak** is an ASP.NET web shell included in the **Nishang** offensive PowerShell toolset. It is specifically designed for Windows targets as it utilizes **PowerShell** to interact with the host.
-
-|Feature|Description|
-|:--|:--|
-|**Execution Style**|Executes each command as a new process.|
-|**Capabilities**|Memory script execution, command encoding, and file transfer (upload/download).|
-|**Interface**|Themed like a PowerShell console with integrated buttons for specialized tasks.|
+1. Confirm target is a **Windows** host running **ASP.NET**.
+2. Identify an upload vector or file write primitive that allows **ASPX** execution.
+3. Prepare the Antak payload by stripping **signatures** and setting **credentials** to prevent unauthorized access.
+4. Upload the modified payload to a web-accessible directory.
+5. Authenticate via the browser to gain a PowerShell-themed console.
+6. Use the shell's built-in functions to execute scripts in memory or pivot to a full C2 callback.
 
 ---
 
-### Operational Workflow
+## WebShell Preparation
 
-#### 1. Prepare and Secure the Shell
+Target is a Windows IIS server and you require PowerShell-level interaction rather than basic CMD. Minimum conditions: write access to a directory where **ASPX** files are permitted to execute.
 
-Before uploading, you must modify the shell to ensure authorized access and to bypass basic signature-based detection.
+Copy the base shell to your working directory
 
-1. **Copy the shell** to your working directory for modification.
-    
-    ```
-    cp /usr/share/nishang/Antak-WebShell/antak.aspx /home/administrator/upload.aspx
-    ```
-    
-2. **Set Credentials:** Modify **line 14** of the script to include a specific `<USERNAME>` and `<PASSWORD>`. This prevents unauthorized parties from using your web shell if they discover the URL.
-3. **Evasion:** Remove **ASCII art** and **comments** from the file. These elements are frequently **signatured** by antivirus (AV) and defenders; stripping them helps avoid alerts.
+```
+cp /usr/share/nishang/Antak-WebShell/antak.aspx /home/<USERNAME>/<FILE_PATH>.aspx
+```
 
-#### 2. Deployment and Access
+Modify line 14 to set access credentials
 
-Once the shell is prepared, it must be delivered to the target web server.
+```
+if ($username -eq "<USERNAME>" -and $password -eq "<PASSWORD>")
+```
 
-1. **Upload** the file (e.g., `upload.aspx`) to the target web application.
-2. **Navigate** to the shell's location via a web browser.
-    - _Note:_ In many web applications, uploaded files are stored in a specific directory like `/files/`.
-3. **Authenticate** using the credentials configured in Step 1.
+**Dangerous / misconfigured settings**
 
-#### 3. Interaction and Post-Exploitation
+- Leaving default **ASCII art** and comments in the file: these are frequently **signatured** by AV/EDR.
+- Using default or weak **credentials** on the shell: allows third parties to hijack the execution point.
 
-After logging in, you can use the web interface to perform system-level actions.
+**Gotchas** **AV/EDR detection** will likely trigger if the file is uploaded without stripping Nishang-specific comments and metadata.
 
-- **Command Execution:** Issue PowerShell commands directly into the prompt.
-- **File Operations:** Use the `Upload` and `Download` buttons to move tools or exfiltrate data.
-- **Establish Persistence/C2:** Use the shell to deliver a callback to a **Command and Control (C2)** platform. This can be done by uploading a payload or using a **PowerShell one-liner** to download and execute a reverse shell.
-- **Specialized Tasks:** Utilize built-in functions such as `Encode and Execute`, `Parse web.config`, or `Execute SQL Query` for deeper environment enumeration.
+## Shell Execution and Interaction
 
----
+You have successfully uploaded the shell and need to bypass standard process limitations. Antak is required when you need to **encode commands** or execute PowerShell scripts directly in memory.
 
-### Command Reference
+Access the shell via browser
 
-|Action|Command / Location|
-|:--|:--|
-|**Default Source Path**|`/usr/share/nishang/Antak-WebShell/antak.aspx`|
-|**Access Shell URL**|`http://<TARGET_IP>/files/upload.aspx`|
-|**View Help**|Enter `help` within the Antak console|
-|**Clear Console**|Enter `clear` within the Antak console|
+```
+http://<TARGET_IP>/<FILE_PATH>.aspx
+```
 
-**Attack Implications:** Successfully deploying Antak provides a stable foothold on a Windows server with the ability to execute complex PowerShell scripts in memory, effectively bypassing many disk-based detection methods while providing a bridge to full C2 operations.
+Built-in command to view available functions
+
+```
+help
+```
+
+**Edge cases**
+
+- Script execution in memory: Use the **Encode and Execute** button to bypass basic command-line logging or simple filters.
+- Connection string discovery: Use the **Parse web.config** button if you land in a web root to extract database credentials.
+
+**Gotchas** **New process per command** means environment variables or directory changes (`cd`) do not persist between separate submissions.
+
+## File Operations and SQL
+
+Symptom: You have a web shell but need to move tools onto the target or query the local database. Minimum conditions: the service account has write permissions to the current directory or the SQL connection string is known.
+
+Upload a local file to the target through the browser UI
+
+```
+[Browse] -> [Upload the File]
+```
+
+Execute raw SQL queries via the connection string field
+
+```
+SELECT * FROM <SERVICE_NAME>
+```
+
+**Gotchas** **File upload failures** often occur because the IIS worker process account lacks write permissions to the specific subdirectory where the shell is located.

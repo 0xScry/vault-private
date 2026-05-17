@@ -1,58 +1,32 @@
-# Anatomy of a Shell
+## Shell Identification
 
-A shell session consists of a combination of the operating system, a **terminal emulator** application, and a **command language interpreter**. Understanding the specific interpreter in use is critical for determining which commands and scripts are compatible with the target system.
+When to use: **Command execution fails with unrecognized syntax** or the session prompt is ambiguous; identifying the interpreter is required to determine valid command and scripting syntax.
 
-### Terminal Emulators
-
-A terminal emulator is the application used to interact with the shell. While selection on an attack machine is often based on personal preference and workflow, the emulator encountered on a target is typically restricted to what is **natively installed**.
-
-|Terminal Emulator|Operating System|
-|:--|:--|
-|Windows Terminal|Windows|
-|cmder|Windows|
-|PuTTY|Windows|
-|kitty|Windows, Linux, MacOS|
-|Alacritty|Windows, Linux, MacOS|
-|xterm|Linux|
-|GNOME Terminal|Linux|
-|MATE Terminal|Linux|
-|Konsole|Linux|
-|Terminal|MacOS|
-|iTerm2|MacOS|
-
-### Command Language Interpreters
-
-The interpreter processes user instructions and issues tasks to the operating system. These are also referred to as **shell scripting languages** or **Command and Scripting interpreters** within the MITRE ATT&CK Matrix. Terminal emulators are not tied to a single language; for instance, the MATE terminal can run **Bash** or **PowerShell** depending on configuration.
-
----
-
-### Methodology: Shell Identification
-
-Before executing complex scripts or exploits, you must identify the active command language interpreter to ensure command recognition.
-
-**1. Analyze the Shell Prompt** Observe the visual "clues" in the terminal. A `$` sign typically identifies interpreters such as **Bash**, **Ksh**, or **POSIX**.
-
-**2. Verify via Process Listing** View the active processes to see which interpreter binary is currently executing the session.
-
-**3. Inspect Environment Variables** Check the system's environment variables to see the defined `SHELL` path.
-
----
-
-### Command Reference
-
-|Command|Goal|
-|:--|:--|
-|`ps`|Lists running processes to identify the active shell binary (e.g., bash).|
-|`env`|Displays environment variables, including the `SHELL` variable.|
-
-**Command Examples:**
+Check the process list for the active shell binary
 
 ```
-# Check running processes for shell identification
 ps
 ```
 
+Inspect environment variables for the shell path
+
 ```
-# View environment variables to find the SHELL definition
 env
 ```
+
+Force a signature-specific error message
+
+```
+<RANDOM_STRING>
+```
+
+- `ps` -> `ps` -> prefer for verifying the actual binary processing input in the current session.
+    
+- `env` -> `env` -> prefer for identifying the user's default configured shell path.
+    
+- **Cross-platform interpreters**: PowerShell can be present on Linux systems, and its presence is not restricted to Windows environments.
+    
+- **Decoupled interfaces**: Terminal emulators are not tied to specific languages and can be reconfigured to launch any interpreter.
+    
+
+**Prompt cue ambiguity** occurs when assuming a shell type based on the `$` symbol, as it is used by Bash, Ksh, POSIX, and others.

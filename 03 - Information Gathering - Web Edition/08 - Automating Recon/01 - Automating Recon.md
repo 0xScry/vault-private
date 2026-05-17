@@ -1,101 +1,96 @@
-# FinalRecon: Automated Web Reconnaissance
-
-Automating web reconnaissance enhances **efficiency and accuracy**, allowing for information gathering **at scale** and more **rapid identification** of potential vulnerabilities compared to manual methods. Frameworks like **FinalRecon** provide a suite of tools to streamline this process.
-
-### Installation Workflow
-
-Follow these steps to set up the environment and ensure all dependencies are met:
-
-1. **Clone the repository** from GitHub to create the local tool directory.
-    
-    ```
-    git clone https://github.com/thewhiteh4t/FinalRecon.git
-    ```
-    
-2. **Navigate into the directory**.
-    
-    ```
-    cd FinalRecon
-    ```
-    
-3. **Install Python dependencies** to ensure the tool has required libraries and modules.
-    
-    ```
-    pip3 install -r requirements.txt
-    ```
-    
-4. **Modify file permissions** to make the main script executable.
-    
-    ```
-    chmod +x ./finalrecon.py
-    ```
-    
-5. **Verify the installation** and view available modules.
-    
-    ```
-    ./finalrecon.py --help
-    ```
-    
+1. Need specific metadata (Headers, WHOIS, SSL) -> use targeted flags
+2. Need infrastructure mapping (DNS, Subdomains, Port scan) -> use infrastructure flags
+3. Need content discovery (Directory search, Crawl, Wayback) -> use discovery flags
+4. Need full automated surface analysis -> use `--full`
+5. Default wordlist or threading insufficient -> specify `-w` and `-dt` or `-pt`
 
 ---
 
-### Command Reference
+## FinalRecon Setup
 
-#### Primary Recon Modules
+Installation required before initial execution.,
 
-|Option|Argument|Description|
-|:--|:--|:--|
-|`--url`|`<TARGET_URL>`|Specifies the target URL for analysis.|
-|`--headers`|N/A|Retrieves **header information** (e.g., Server type, Power-by tags).|
-|`--sslinfo`|N/A|Collects **SSL certificate** details.|
-|`--whois`|N/A|Performs a **Whois lookup** for domain registration data.|
-|`--crawl`|N/A|**Crawls** the target website.|
-|`--dns`|N/A|Performs **DNS enumeration**.|
-|`--sub`|N/A|Enumerates **subdomains**.|
-|`--dir`|N/A|Searches for **directories** on the target.|
-|`--wayback`|N/A|Retrieves **Wayback URLs** to view historical snapshots.|
-|`--ps`|N/A|Executes a **fast port scan**.|
-|`--full`|N/A|Initiates a **comprehensive reconnaissance** scan using all modules.|
-
-#### Global Options & Performance
-
-|Option|Argument|Default|Description|
-|:--|:--|:--|:--|
-|`-dt`|`<NUMBER>`|30|Threads for **directory enumeration**.|
-|`-pt`|`<NUMBER>`|50|Threads for **port scanning**.|
-|`-w`|`<PATH>`|`wordlists/dirb_common.txt`|Path to custom **wordlist**.|
-|`-e`|`<EXTENSIONS>`|N/A|Specific **file extensions** (e.g., txt, php).|
-|`-o`|`<FORMAT>`|txt|**Export format** for results.|
-|`-k`|`<API_KEY>`|N/A|Adds third-party **API keys** (e.g., Shodan).|
-
----
-
-### Operational Execution
-
-#### Targeted Metadata Gathering
-
-Use specific flags when you only need high-level infrastructure details, such as **web server versions** or **domain ownership**.
+Clone repository and install dependencies
 
 ```
-./finalrecon.py --headers --whois --url <TARGET_URL>
+git clone https://github.com/thewhiteh4t/FinalRecon.git
+cd FinalRecon
+pip3 install -r requirements.txt
+chmod +x ./finalrecon.py
 ```
 
-- **Attack Implication:** Identifying the server version (e.g., `Apache/2.4.41`) through headers allows for targeted exploit research.
-- **Data Export:** Results are automatically saved to the local export directory (Default: `~/.local/share/finalrecon/dumps/`) for later review.
+## Targeted Information Gathering
 
-#### Full Reconnaissance
+Gathering specific metadata when manual reconnaissance is slow or prone to error.,
 
-Use when starting a fresh engagement to build a complete profile of the target's external footprint.
+Execute header and WHOIS lookup for a specific target
 
 ```
-./finalrecon.py --full --url <TARGET_URL>
+./finalrecon.py --headers --whois --url <URL>
 ```
 
----
+**Gotchas**
 
-### Configuration & Edge Cases
+- **Redirects are disabled** by default; use `-r` to follow them.
+- **SSL verification is active** by default; use `-s` to toggle if encountering self-signed certificates.
 
-|Setting|Status|Impact|
-|:--|:--|:--|
-|`--s`|**Toggle SSL Verification**|Enabled by default; may need to be disabled for self-signed certificates.|
-|`--r`|**Allow Redirect**|Disabled by default; if the target redirects to a different domain/path, the scan may stop unless this is toggled.|
+## Infrastructure Enumeration
+
+Mapping the external attack surface via DNS, subdomains, and certificates.,
+
+Perform DNS and subdomain enumeration using custom DNS servers
+
+```
+./finalrecon.py --dns --sub -d <DNS_SERVER> --url <URL>
+```
+
+Fast port scan and SSL certificate inspection
+
+```
+./finalrecon.py --ps --sslinfo --url <URL>
+```
+
+**Dangerous / misconfigured settings**
+
+- Default port scan threads at 50; **aggressive scanning** may trigger security alerts.
+- Default SSL port is 443; **non-standard ports** require `-sp <PORT>`.
+
+## Content and Path Discovery
+
+Identifying hidden directories, files, and historical URL data.,
+
+Directory search with specific extensions and custom wordlist
+
+```
+./finalrecon.py --dir -w <FILE_PATH> -e <EXTENSIONS> --url <URL>
+```
+
+Crawl target and retrieve Wayback Machine URLs
+
+```
+./finalrecon.py --crawl --wayback --url <URL>
+```
+
+**Edge cases**
+
+- Adjust directory threads with `-dt` if the target server is unstable or high-latency.
+
+## Comprehensive Reconnaissance
+
+Automating all available modules for a complete initial overview.,
+
+Run all reconnaissance modules against the target
+
+```
+./finalrecon.py --full --url <URL>
+```
+
+Modify export directory and hide banner for cleaner output
+
+```
+./finalrecon.py --full -nb -cd <FILE_PATH> --url <URL>
+```
+
+**Gotchas**
+
+- **API keys are required** for certain external data sources; use `-k shodan@<HASH>` to provide them.

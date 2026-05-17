@@ -1,147 +1,155 @@
-# Linux Credential Hunting & Local Privilege Escalation
+## Configuration File Enumeration
 
-Hunting for credentials is a primary step after gaining initial access to a Linux system. This process identifies "low-hanging fruit" that can lead to elevated privileges within minutes by locating stored passwords or hashes.
+Searching for hardcoded credentials in service configurations when initial access is gained via a shell.
 
-### 1. Methodology: System Context & File Enumeration
-
-Before running commands, identify the **system's role** (e.g., an isolated database server vs. a user workstation). This determines where sensitive data is likely to be stored.
-
-#### Configuration File Discovery
-
-**Goal:** Locate service settings that may contain plaintext credentials or reveal how a service operates.
-
-|Extension|Importance|
-|:--|:--|
-|`.conf`|Standard configuration file.|
-|`.config`|Often used for user-specific or complex application settings.|
-|`.cnf`|Commonly used by MySQL/MariaDB and SSL services.|
-
-**Workflow:**
-
-1. **Identify** all configuration files while filtering out noise from system libraries.
+Find configuration files by common extensions while filtering out library, font, and documentation noise
 
 ```
-for l in $(echo ".conf .config .cnf"); do
-    echo -e "\nFile extension: " $l;
-    find / -name *$l 2>/dev/null | grep -v "lib|fonts|share|core";
-done
+for l in $(echo ".conf .config .cnf");do echo -e "\nFile extension: "  $l; find / -name *$l 2>/dev/null | grep -v "lib|fonts|share|core" ;done
 ```
 
-2. **Search** discovered files for specific keywords.
+Search specifically for credential-related keywords within found `.cnf` files and exclude comments
 
 ```
-for i in $(find / -name *.cnf 2>/dev/null | grep -v "doc|lib"); do
-    echo -e "\nFile: " $i;
-    grep "user|password|pass" $i 2>/dev/null | grep -v "#";
-done
+for i in $(find / -name *.cnf 2>/dev/null | grep -v "doc|lib");do echo -e "\nFile: " $i; grep "user|password|pass" $i 2>/dev/null | grep -v "#";done
+```
+
+**Gotchas** **Renamed extensions or recompiled services** may hide configuration files from standard extension-based searches.
+
+---
+
+## Database File Discovery
+
+Identifying local database storage or SQL dumps that may contain credentials or sensitive data.
+
+Locate SQL and database files while filtering system headers and manual pages
+
+```
+for l in $(echo ".sql .db . *db .db* ");do echo -e "\nDB File extension: "  $l; find / -name *$l 2>/dev/null | grep -v "doc|lib|headers|share|man";done
 ```
 
 ---
 
-### 2. Hunting for Databases, Scripts, and Notes
+## Note and Script Hunting
 
-Credentials are often hardcoded in scripts to allow automated execution without manual password entry.
+Searching for manually created credential lists or automation scripts containing plaintext secrets.
 
-#### Command Reference: File Types
-
-|Target Type|Why it Matters|Command|
-|:--|:--|:--|
-|**Databases**|May contain user tables or connection strings.|`find / -name "*.sql" -o -name "*.db" -o -name "*db" -o -name ".db* " 2>/dev/null`|
-|**Scripts**|Often contain credentials for API calls or database connections.|`for l in $(echo ".py .pyc .pl .go .jar .c .sh"); do find / -name *$l 2>/dev/null; done`|
-|**Notes**|Users may store access points or credentials in unstructured text.|`find /home/* -type f -name "*.txt" -o ! -name "*.*"`|
-
----
-
-### 3. Scheduled Tasks and Persistence (Cronjobs)
-
-**Scenario:** Use this when looking for automated processes running as higher-privileged users (like root) that might rely on poorly secured scripts or hardcoded credentials.
-
-1. **View system-wide cronjobs:**
-    
-    ```
-    cat /etc/crontab
-    ```
-    
-2. **Enumerate directory-based cronjobs:** (Daily, hourly, monthly, weekly, and Debian-specific `cron.d`).
-    
-    ```
-    ls -la /etc/cron.*/
-    ```
-    
-
----
-
-### 4. History and Log Analysis
-
-**Goal:** Extract credentials from past user actions or identify patterns in system authentication.
-
-#### History Files
-
-Users occasionally type passwords directly into the CLI or use `su` with a password in the command history.
+Find text files or files without extensions in home directories to locate administrator notes
 
 ```
-tail -n 5 /home/<USERNAME>/.bash*
+find /home/* -type f -name "*.txt" -o ! -name "*.*"
 ```
 
-#### System Logs
-
-**Scenario:** Use when manual inspection is inefficient; this searches for authentication events, sudo usage, and new user creation.
-
-|Log Path|Description|
-|:--|:--|
-|`/var/log/auth.log`|Debian-based authentication logs.|
-|`/var/log/secure`|RedHat/CentOS authentication logs.|
-|`/var/log/mysqld.log`|MySQL server logs.|
-
-**Automated Log Grep:**
+Identify scripts in common languages while filtering standard library paths
 
 ```
-for i in $(ls /var/log/* 2>/dev/null); do
-    GREP=$(grep "accepted|session opened|session closed|failure|failed|ssh|password changed|new user|delete user|sudo|COMMAND=|logs" $i 2>/dev/null);
-    if [[ $GREP ]]; then
-        echo -e "\n#### Log file: " $i;
-        grep "accepted|session opened|session closed|failure|failed|ssh|password changed|new user|delete user|sudo|COMMAND=|logs" $i 2>/dev/null;
-    fi;
-done
+for l in $(echo ".py .pyc .pl .go .jar .c .sh");do echo -e "\nFile extension: "  $l; find / -name *$l 2>/dev/null | grep -v "doc|lib|headers|share";done
 ```
 
 ---
 
-### 5. Memory, Cache, and Browser Credentials
+## Cronjob Enumeration
 
-Applications often store credentials in memory or local caches (like Keyrings) for reuse.
+Checking scheduled tasks for credentials passed as arguments or insecurely stored in associated scripts.
 
-#### Automated Tools
+View system-wide scheduled tasks
 
-|Tool|Requirement|Function|
-|:--|:--|:--|
-|**mimipenguin**|`root` permissions|Extracts cleartext credentials from memory.|
-|**LaZagne**|Python|Extracts hashes and passwords from browsers, Keyrings, and shadow files.|
-|**Firefox Decrypt**|Python 3.9|Specifically targets Firefox's encrypted `logins.json`.|
+```
+cat /etc/crontab
+```
 
-**Operational Steps for Browser Decryption:**
+Check for scripts and configuration files in Debian-based cron directories
 
-1. **Locate** the Firefox profile directory.
-    
-    ```
-    ls -l /home/<USERNAME>/.mozilla/firefox/ | grep default
-    ```
-    
-2. **Extract** the `logins.json` file (if manual inspection is needed).
-    
-    ```
-    cat /home/<USERNAME>/.mozilla/firefox/<PROFILE_ID>.default-release/logins.json | jq .
-    ```
-    
-3. **Execute** automated decryption:
-    
-    ```
-    # Using LaZagne
-    python3 laZagne.py browsers
-    
-    # Using Firefox Decrypt
-    python3 firefox_decrypt.py
-    ```
-    
+```
+ls -la /etc/cron.*/
+```
 
-**Attack Implication:** Successfully decrypting browser credentials often unlocks external web accounts (SaaS, internal portals) or corporate VPN/email access.
+---
+
+## History and Log Analysis
+
+Reviewing command history and system logs for leaked credentials or sensitive process information.
+
+Check the end of shell history and profile files for hardcoded passwords or sensitive commands
+
+```
+tail -n5 /home/<USERNAME>/.bash*
+```
+
+Automated search through system logs for security-relevant strings and session information
+
+```
+for i in  $(ls /var/log/* 2>/dev/null);do GREP=$(grep "accepted|session opened|session closed|failure|failed|ssh|password changed|new user|delete user|sudo|COMMAND=|logs" $i 2>/dev/null); if [[ $GREP ]];then echo -e "\n#### Log file: " $i; grep "accepted|session opened|session closed|failure|failed|ssh|password changed|new user|delete user|sudo|COMMAND=|logs" $i 2>/dev/null;fi;done
+```
+
+**Gotchas** **Log formats and availability** vary significantly depending on the applications installed and the Linux distribution in use.
+
+---
+
+## Memory and Cache Extraction
+
+Extracting credentials from active processes or system-wide password managers.
+
+### Mimipenguin
+
+Extracting cleartext credentials from the memory of logged-in users.
+
+Execute memory dump and credential extraction
+
+```
+sudo python3 mimipenguin.py
+```
+
+### LaZagne
+
+Extracting hashes and passwords from various sources including keyrings and shadow files.
+
+Attempt extraction from all supported modules
+
+```
+sudo python2.7 laZagne.py all
+```
+
+### Tool comparison
+
+- mimipenguin -> `sudo python3 mimipenguin.py` -> prefer for extracting credentials directly from active process memory
+- LaZagne -> `sudo python2.7 laZagne.py all` -> prefer for broad coverage including browser storage, keyrings, and shadow hashes
+
+**Gotchas** **Insufficient permissions** will cause these tools to fail as they require **root/administrator** access to read sensitive memory and system files.
+
+---
+
+## Browser Credential Decryption
+
+Recovering saved passwords from local browser profiles.
+
+### Firefox Decrypt
+
+Decrypting credentials stored in Firefox `logins.json`.
+
+Run decryption against found Mozilla profiles
+
+```
+python3.9 firefox_decrypt.py
+```
+
+### LaZagne
+
+Automated browser credential extraction.
+
+Target browser-specific storage modules
+
+```
+python3 laZagne.py browsers
+```
+
+### Tool comparison
+
+- Firefox Decrypt -> `python3.9 firefox_decrypt.py` -> prefer for dedicated Firefox profile decryption
+- LaZagne -> `python3 laZagne.py browsers` -> prefer when multiple different browsers are present on the system
+
+**Edge cases**
+
+- If the target environment only has Python 2, use Firefox Decrypt 0.7.0.
+
+**Gotchas** **Python version mismatch** may prevent execution as the latest Firefox Decrypt requires Python 3.9.

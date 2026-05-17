@@ -1,38 +1,70 @@
-# Web Crawling (Spidering)
+## Web Crawling
 
-**Crawling**, or spidering, is an automated reconnaissance process used to systematically browse and index web pages by following links. Unlike fuzzing, which relies on guessing potential links, crawling discovers information by **following existing paths** within the web structure.
+When to use: Automated link discovery is required to map site structure and index pages starting from a seed URL.
 
-### Operational Workflow
+Commands Set the initial target for the crawler logic
 
-1. **Identify a Seed URL:** Select the initial web page to begin the crawl.
-2. **Fetch and Parse:** The crawler fetches the page content and parses it to extract all available links.
-3. **Queue Management:** Extracted links are added to a queue for subsequent crawling.
-4. **Iteration:** The process repeats iteratively to explore the website's structure based on the defined scope.
+```
+http://<TARGET_IP>/
+```
 
-### Crawling Strategies
+Dangerous / misconfigured settings
 
-The choice of strategy depends on the specific goals of the reconnaissance.
+- **Directory browsing enabled** on sensitive paths like `/files/`
+- **Publicly accessible** file servers referenced in source code
 
-|Strategy|Methodology|Use Case|
-|:--|:--|:--|
-|**Breadth-First**|Prioritizes **width before depth**; crawls all links on the seed page before moving to the next level.|Use to obtain a **broad overview** of the entire website structure and content.|
-|**Depth-First**|Follows a **single path** as far as possible before backtracking.|Use to find **specific content** or reach deep into the website's hierarchical structure.|
+Gotchas
 
-### Contextual Data Analysis
+- **Fuzzing** is distinct from crawling; crawlers follow existing links rather than guessing potential ones.
 
-The primary value of crawling lies in **connecting disparate data points** to identify vulnerabilities. A single finding, such as a software version in metadata, becomes critical when correlated with other indicators like vulnerable configuration files.
-
-- **Pattern Recognition:** Identifying repeated URL structures (e.g., multiple links pointing to a `/files/` directory) can indicate areas for manual inspection.
-- **Information Correlation:** Combining innocuous findings, such as a code comment mentioning a "file server," with discovered directories can confirm the existence of publicly accessible sensitive data.
-
-### Dangerous Misconfigurations
-
-Crawling can expose misconfigured settings that lead to immediate data exposure.
-
-|Misconfiguration|Impact|Attack Implication|
-|:--|:--|:--|
-|**Directory Browsing Enabled**|Exposes a host of files including **backup archives** and **internal documents**.|Allows an attacker to manually navigate and download sensitive data not intended for public access.|
+> ⚠️ Gap: Source lacks specific tool execution (e.g., Burp Suite Spider, Scrapy, or CLI crawlers) and required flags for depth/concurrency limits.
 
 ---
 
-**Note:** The provided source material focuses on the conceptual logic and strategies of web crawling; specific command-line tool syntax was not included in the text provided.
+## Breadth-First Strategy
+
+When to use: Site mapping requires a broad overview of all top-level content before investigating deep sub-directories.
+
+Dangerous / misconfigured settings
+
+- **Exposed backup archives** or internal documents in directory listings discovered during broad sweeps
+
+Gotchas
+
+- **Shallow crawling** may miss specific, deeply nested content or isolated directories.
+
+---
+
+## Depth-First Strategy
+
+When to use: Target investigation requires reaching deep into the site's internal structure or following specific single paths to their conclusion.
+
+Edge cases
+
+- Use when looking for specific content hidden deep within nested directories.
+
+Gotchas
+
+- **Backtracking** is required to explore alternative paths, which can increase total crawl time on complex structures.
+
+---
+
+## Contextual Reconnaissance Analysis
+
+When to use: Isolated findings like version numbers in comments or metadata require correlation to confirm exploitability.
+
+Commands Identify patterns in extracted URLs to target manual inspection
+
+```
+/files/
+```
+
+Dangerous / misconfigured settings
+
+- **Outdated software versions** listed in metadata or comments
+- **Vulnerable configuration files** accessible via crawled links
+- **Sensitive data exposure** in publicly reachable directories
+
+Gotchas
+
+- **Data isolation** prevents identifying critical indicators; a "file server" comment only becomes critical when correlated with an accessible `/files/` directory.

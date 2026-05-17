@@ -1,61 +1,74 @@
-### **Protected File Transfers**
+## Windows File and String Encryption
 
-During penetration tests, protecting sensitive data such as **user lists**, **credentials** (e.g., `NTDS.dit`), and **enumeration data** is a professional and legal necessity. Data leakage can have severe consequences for the client and the tester.
+Handling sensitive data like **NTDS.dit** or credentials when **SSH**, **SFTP**, or **HTTPS** tunnels are unavailable.
 
-#### **Operational Context**
+Import script as a module before execution
 
-- **When to use:** Use manual encryption when secure transport protocols like **SSH, SFTP, or HTTPS** are unavailable.
-- **Why it matters:** Prevents data from being read if intercepted in transit.
-- **Best Practice:** Use **strong, unique passwords** for every client to prevent a single password leak from compromising all assessments.
-- **DLP Testing:** To test **Data Loss Prevention (DLP)** or egress filtering without exposing actual sensitive data, use **dummy data** that mimics the target information.
+```
+Import-Module .\Invoke-AESEncryption.ps1
+```
+
+Encrypt string to Base64 ciphertext
+
+```
+Invoke-AESEncryption -Mode Encrypt -Key "<PASSWORD>" -Text "Secret Text"
+```
+
+Decrypt Base64 string to plain text
+
+```
+Invoke-AESEncryption -Mode Decrypt -Key "<PASSWORD>" -Text "<HASH>"
+```
+
+Encrypt local file to .aes format
+
+```
+Invoke-AESEncryption -Mode Encrypt -Key "<PASSWORD>" -Path <FILE_PATH>
+```
+
+Decrypt .aes file
+
+```
+Invoke-AESEncryption -Mode Decrypt -Key "<PASSWORD>" -Path <FILE_PATH>
+```
+
+**Gotchas**
+
+- **Script dependency** requires transferring `Invoke-AESEncryption.ps1` to the target host before any commands function.
+- **Reused passwords** across different client engagements can allow unauthorized decryption if one password is leaked.
 
 ---
 
-### **Windows: File Encryption with PowerShell**
+## Linux File Encryption
 
-The `Invoke-AESEncryption.ps1` script is a lightweight method for encrypting files and strings using **AES**.
+Securing high-value files like `/etc/passwd` or enumeration data using **OpenSSL** when secure transport protocols are restricted.
 
-#### **Workflow**
+Encrypt file with AES-256 and PBKDF2
 
-1. **Transfer** the script to the target host using any available file transfer method.
-2. **Import** the script as a module to make the function available in the current session.
-3. **Execute** the encryption or decryption command.
+```
+openssl enc -aes256 -iter 100000 -pbkdf2 -in <FILE_PATH> -out <FILE_PATH>.enc
+```
 
-#### **Command Reference**
+Decrypt encrypted file
 
-|Goal|Command|
-|:--|:--|
-|**Import Module**|`Import-Module .\Invoke-AESEncryption.ps1`|
-|**Encrypt String**|`Invoke-AESEncryption -Mode Encrypt -Key "<PASSWORD>" -Text "<SECRET_TEXT>"`|
-|**Decrypt String**|`Invoke-AESEncryption -Mode Decrypt -Key "<PASSWORD>" -Text "<CIPHERTEXT>"`|
-|**Encrypt File**|`Invoke-AESEncryption -Mode Encrypt -Key "<PASSWORD>" -Path <FILE_PATH>`|
-|**Decrypt File**|`Invoke-AESEncryption -Mode Decrypt -Key "<PASSWORD>" -Path <FILE_PATH>.aes`|
+```
+openssl enc -d -aes256 -iter 100000 -pbkdf2 -in <FILE_PATH>.enc -out <FILE_PATH>
+```
 
-_Note: Encrypting a file creates a new file with the **.aes** extension._
+**Dangerous / misconfigured settings**
+
+- Missing `-pbkdf2` or low `-iter` counts makes the resulting file vulnerable to **brute-force attacks**.
+
+**Gotchas**
+
+- **In-transit interception** of unencrypted files can lead to severe data leakage; encrypt before moving if using cleartext protocols.
 
 ---
 
-### **Linux: File Encryption with OpenSSL**
+## Data Exfiltration Methodology
 
-**OpenSSL** is standard on most Linux distributions and is used to encrypt files for secure transit.
+Symptom-first decision logic for handling sensitive client data.
 
-#### **Technique Selection**
-
-To resist **brute-force cracking**, it is recommended to use:
-
-- **-aes256**: High-strength cipher.
-- **-pbkdf2**: Password-Based Key Derivation Function 2.
-- **-iter 100000**: High iteration count to increase the computational cost of cracking.
-
-#### **Operational Commands**
-
-|Goal|Command|
-|:--|:--|
-|**Encrypt File**|`openssl enc -aes256 -iter 100000 -pbkdf2 -in <INPUT_FILE> -out <OUTPUT_FILE>`|
-|**Decrypt File**|`openssl enc -d -aes256 -iter 100000 -pbkdf2 -in <INPUT_FILE> -out <OUTPUT_FILE>`|
-
-**Workflow Details:**
-
-1. When running the encryption command, you will be prompted to **enter and verify the password**.
-2. To decrypt, add the `-d` flag and provide the same cipher and iteration parameters used during encryption.
-3. Once encrypted, transfer the file using **secure transport** (HTTPS, SFTP, or SSH) whenever possible.
+1. Identify sensitivity: If data contains **PII**, financial records, or trade secrets, do not exfiltrate unless explicitly requested.
+2. DLP Testing: Use dummy data that mimics the target format to test **egress filtering** or **DLP controls**.
+3. Secure Transport: Prioritize **HTTPS**, **SFTP**, or **SSH** for the transfer itself.

@@ -1,86 +1,85 @@
-### Metasploit Framework: Module Management and Exploitation
+## Searching for Modules
 
-Metasploit modules are pre-configured scripts for specific functions, categorized to support different phases of an assessment. **Exploit modules** function as automated Proof-of-Concept (POC) tools; however, a module's failure does not necessarily disprove a vulnerability's existence, as target-specific customization is often required.
+Identifying proof-of-concept exploits or scanning tools based on service versioning, CVE IDs, or target architecture.
 
-#### Module Structure and Types
+Basic keyword search to display matching modules
 
-Modules follow a standard naming convention: `<Index_No.> <type>/<os>/<service>/<name>`.
+```
+search <SERVICE_NAME>
+```
 
-|Type|Function|Context/Usage|
-|:--|:--|:--|
-|**Auxiliary**|Scanning, fuzzing, sniffing, and administration.|Use for initial discovery and support tasks.|
-|**Exploits**|Modules that leverage a vulnerability to deliver a payload.|Use to gain initial access to a target.|
-|**Post**|Information gathering and pivoting.|Use after a session is established to deepen access.|
-|**Payloads**|Remote code that establishes the connection back to the attacker.|Delivered by exploits to provide shell access.|
-|**Encoders**|Ensures payload integrity during transit.|Use to maintain payload functionality.|
-|**NOPs**|(No Operation) maintains consistent payload sizes.|Use to stabilize exploit attempts.|
+Filtered search to isolate reliable exploits for a specific platform and vulnerability year
 
----
+```
+search type:exploit platform:<OS> cve:<YEAR> rank:excellent <PATTERN>
+```
 
-#### Module Discovery and Search
+Export search results to a CSV file for external documentation
 
-The `search` function allows for rapid filtering of the Metasploit database using specific tags.
+```
+search -o <FILE_PATH>
+```
 
-**Search Syntax:** `search [<options>] [<keywords>:<value>]`
+Search while excluding specific categories or terms
 
-|Keyword|Purpose|
-|:--|:--|
-|`type:`|Filters by module category (e.g., `exploit`, `auxiliary`, `post`).|
-|`platform:`|Filters by the target operating system (e.g., `windows`, `linux`).|
-|`cve:`|Searches for modules matching a specific CVE ID year or number.|
-|`rank:`|Filters by reliability (e.g., `excellent`, `normal`).|
-|`name:`|Searches the descriptive name of the module.|
-|`path:`|Searches based on the module's file path.|
+```
+search <KEYWORD> -<KEYWORD>:<VALUE>
+```
 
-**Operational Search Examples:**
+Sort results by a specific column such as rank or disclosure date
 
-- Filter for specific Windows exploits from a known year: `search type:exploit platform:windows cve:<YEAR> rank:excellent <KEYWORD>`
-- Reverse sort results by type: `search <STRING> -s type -r`
+```
+search <PATTERN> -s rank -r
+```
 
----
+- **Exploit failure** occurs frequently even when a vulnerability exists if the module is not customized for the specific target host.
+- **Non-interactive modules** including Encoders, NOPs, and Payloads cannot be selected using the index number selection method.
 
-#### Operational Workflow: From Discovery to Shell
+## Module Configuration and Execution
 
-Follow these steps to select, configure, and execute a module against a target.
+Loading a selected module and defining the parameters required for payload delivery or auxiliary functions.
 
-1. **Identify Vulnerable Services:** Use external tools like `nmap` to find open ports and service versions (e.g., SMB on port 445).
-2. **Search for Relevant Modules:** Search MSF for the service or vulnerability (e.g., `search ms17_010`).
-3. **Select the Module:** Load the module using its name or index number. **Note:** Only Auxiliary, Exploit, and Post modules can be "interactable" initiators.
-    
-    ```
-    use <INDEX_OR_PATH>
-    ```
-    
-4. **Review Module Details:** Check the `info` and `options` to understand requirements and behavior.
-    
-    ```
-    info
-    show options
-    ```
-    
-5. **Configure Required Parameters:** Set the target and attack machine variables. Variables marked **Required: Yes** must be populated.
-    - Use `set` for session-specific variables.
-    - Use `setg` (global) to keep settings persistent across different modules during the same session.
-6. **Execute the Attack:** Launch the module to attempt exploitation.
-    
-    ```
-    run
-    ```
-    
-7. **Interact with the Session:** Once a shell is established, use the `shell` command to transition from a Meterpreter prompt to a standard system command prompt.
+Select a module by its corresponding index number from the search results
 
----
+```
+use <INDEX_NO>
+```
 
-#### Command Reference
+List required and optional parameters that must be configured before execution
 
-| Command                  | Goal                                                                   |
-| :----------------------- | :--------------------------------------------------------------------- |
-| `use <INDEX>`            | Loads a module for use.                                                |
-| `show options`           | Lists all configurable parameters and identifies required fields.      |
-| `set RHOSTS <TARGET_IP>` | Defines the remote target(s).                                          |
-| `set RPORT <PORT>`       | Defines the target service port.                                       |
-| `set LHOST <ATTACK_IP>`  | Sets the local IP for the reverse shell to connect back to.            |
-| `setg <VAR> <VALUE>`     | Sets a global variable that persists across different modules.         |
-| `info`                   | Displays module platform, architecture, rank, and descriptive summary. |
-| `run`                    | Initiates the exploit or auxiliary module.                             |
-| `shell`                  | Opens a standard system shell from a Meterpreter session.              |
+```
+show options
+```
+
+Retrieve comprehensive module metadata, author information, and technical references
+
+```
+info
+```
+
+Configure a variable for the current module context only
+
+```
+set <OPTION_NAME> <VALUE>
+```
+
+Define a persistent global variable to maintain values like target IPs across multiple modules
+
+```
+setg <OPTION_NAME> <VALUE>
+```
+
+Launch the configured exploit or initiate an auxiliary scanner
+
+```
+run
+```
+
+Drop into a standard operating system shell from an active Meterpreter session
+
+```
+shell
+```
+
+- **Check method** is not available for all modules; verify compatibility in the search results or module info before attempting to validate a vulnerability.
+- **LHOST** must be accurately defined for all reverse TCP payloads or the connection will fail to call back to the attacker.
