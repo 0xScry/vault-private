@@ -1,80 +1,103 @@
-### MySQL Service Fundamentals & Footprinting
-
-**MySQL** is an open-source relational database management system (RDBMS) based on the **client-server principle**. It is a core component of **LAMP** (Linux, Apache, MySQL, PHP) and **LEMP** (Nginx) stacks, serving as the central repository for sensitive data such as usernames, passwords, and site content.
-
----
-
-### Dangerous Configurations
-
-Misconfigurations in the MySQL configuration file (typically `/etc/mysql/mysql.conf.d/mysqld.cnf`) can lead to unauthorized access or information disclosure.
-
-|Setting|Security Implication|
-|:--|:--|
-|`user`|Defines the system user the service runs as; security-relevant if permissions are mismanaged.|
-|`password`|Often stored in **plain text** within configuration files.|
-|`admin_address`|The IP listening for administrative connections; if exposed, allows remote management attempts.|
-|`debug`|Provides verbose information during errors, which can be used to map the database structure.|
-|`sql_warnings`|Controls whether INSERT statements produce information strings, potentially leaking data.|
-|`secure_file_priv`|Limits data import/export operations; if misconfigured, may allow reading or writing files to the system.|
-
-**Attack Implication:** If an attacker gains file-read access (e.g., via LFI) or a shell, they can read the configuration file to harvest **plain-text credentials**. Verbose error messages from `debug` or `sql_warnings` often confirm **SQL Injection** vulnerabilities and can be manipulated to execute system commands.
+1. Identify open port 3306 and use Nmap NSE scripts to footprint the version and existing users.
+2. Manually verify any reported empty passwords or discovered credentials to eliminate **false-positives** from automated scripts.
+3. Access the database using the MySQL client if credentials or a login bypass are confirmed.
+4. Enumerate the database structure, starting with schema discovery, then table and column identification.
+5. If local file system access is achieved, audit configuration files for plain-text credentials and misconfigured security variables.
 
 ---
 
-### Methodology: Footprinting the Service
+## Footprinting and Service Discovery
 
-#### 1. Service Scanning
+**When to use** TCP port 3306 is identified as open during initial network scanning.
 
-Use **Nmap** to identify the service version and run default vulnerability scripts. MySQL typically runs on **TCP port 3306**.
+Enumerate version, capabilities, and potential users via NSE scripts
 
 ```
 sudo nmap <TARGET_IP> -sV -sC -p3306 --script mysql*
 ```
 
-- **Goal:** Determine the exact version and identify common misconfigurations like **empty passwords** or **anonymous access**.
-- **Decision Point:** Always manually verify Nmap script results. Scripts may report **false-positives**, such as claiming the `root` account has an empty password when it is actually protected.
+**Gotchas** **False-positives** occur frequently with Nmap reporting a **root account with empty password** when a fixed password is actually required.
 
-#### 2. Remote Interaction
+## Service Interaction and Authentication
 
-If credentials are found or guessed, attempt a remote connection using the `mysql` client.
+**When to use** Credentials have been harvested from configuration files, brute forcing, or research.
+
+Authenticate to the remote server using the native MySQL client
 
 ```
-# Attempt login without a password
-mysql -u <USERNAME> -h <TARGET_IP>
-
-# Attempt login with a password (no space after -p)
 mysql -u <USERNAME> -p<PASSWORD> -h <TARGET_IP>
 ```
 
----
+**Dangerous / misconfigured settings**
 
-### Database Enumeration
+- Remote access enabled on the public Internet or external networks instead of localhost only.
+- Empty passwords for the **root** user or other administrative accounts.
 
-Once connected, follow this workflow to extract sensitive information and understand the environment.
+**Gotchas** **Access denied** occurs if there is a space between the `-p` flag and the password.
 
-1. **Identify Available Databases:** Locate system and user-defined databases.
-2. **Select a Target:** Switch context to a specific database (e.g., `mysql`, `sys`, or `information_schema`).
-3. **Map Tables and Columns:** Determine where sensitive data is stored.
-4. **Extract Data:** Query the rows for credentials or configuration details.
+## Database Enumeration
 
-#### Command Reference
+**When to use** An active session is established and you need to locate sensitive PII, credentials, or administrative data.
 
-|Command|Goal|
-|:--|:--|
-|`show databases;`|Lists all databases accessible to the current user.|
-|`use <DATABASE>;`|Switches the session to the specified database.|
-|`show tables;`|Displays all tables within the selected database.|
-|`show columns from <TABLE>;`|Lists field names and data types for a specific table.|
-|`select * from <TABLE>;`|Dumps all data from the specified table.|
-|`select * from <TABLE> where <COLUMN> = "<STRING>";`|Filters data to find specific entries (e.g., a specific username).|
-|`select version();`|Retrieves the specific database engine version.|
-
-**Note on System Metadata:**
-
-- **`information_schema`**: Contains metadata about all other databases.
-- **`sys` (System Schema)**: Contains management metadata, including host summaries and user statistics.
+List all available databases on the server
 
 ```
--- Example: Identifying unique users and their connection hosts
-select host, unique_users from host_summary;
+show databases;
 ```
+
+Select a target database to set the context for further queries
+
+```
+use <DATABASE_NAME>;
+```
+
+List tables within the currently selected database to identify data locations
+
+```
+show tables;
+```
+
+Dump all rows from a specific table to extract data
+
+```
+select * from <TABLE_NAME>;
+```
+
+Filter table data for specific strings like usernames or administrative roles
+
+```
+select * from <TABLE_NAME> where <COLUMN_NAME> = "<STRING>";
+```
+
+Display column names and types to understand the table structure
+
+```
+show columns from <TABLE_NAME>;
+```
+
+**Edge cases**
+
+- The **information_schema** and **sys** databases contain metadata and system catalogs that can reveal the broader environment structure.
+- Web applications may return detailed **error descriptions** which reveal internal database interaction logic.
+
+## Configuration Auditing
+
+**When to use** Local shell access or arbitrary file read is available on the database host.
+
+Read the primary configuration file to find plain-text credentials and service users
+
+```
+cat /etc/mysql/mysql.conf.d/mysqld.cnf | grep -v "#" | sed -r '/^\s*$/d'
+```
+
+**Dangerous / misconfigured settings**
+
+- **user**: Service running as a high-privileged user.
+- **password**: Credentials stored in plain-text within the configuration file.
+- **admin_address**: Administrative interface listening on reachable IP addresses.
+- **debug** or **sql_warnings**: Verbose error output enabled, facilitating SQL injection.
+- **secure_file_priv**: Misconfigured or disabled, allowing unauthorized data import/export.
+
+**Gotchas** **Unauthorized access** to the entire database is possible if configuration file permissions allow non-admin users to read plain-text passwords.
+
+> ⚠️ Gap: Nmap scripts may return `ERROR: Script execution failed` if the server uses modern authentication plugins like `caching_sha2_password` that the script cannot handle.

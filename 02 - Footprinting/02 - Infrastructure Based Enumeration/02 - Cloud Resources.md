@@ -1,51 +1,81 @@
-# Cloud Resource Discovery and Enumeration
+## DNS-Based Discovery
 
-Cloud platforms such as **AWS, GCP, and Azure** serve as central management points for modern infrastructure. While providers secure the base infrastructure, **administrator misconfigurations** often leave resources like S3 buckets (AWS), blobs (Azure), and cloud storage (GCP) accessible without authentication.
+Identify cloud-hosted assets by resolving a subdomain list and filtering for known cloud provider strings to find storage used for administrative purposes.
 
-### Technique: DNS Infrastructure Mapping
+Look up IP addresses for a list of subdomains to identify cloud-hosted infrastructure
 
-Cloud storage endpoints are frequently added to a company's DNS records to simplify employee management and access. Identifying these records reveals the specific cloud providers and instances in use.
+```
+for i in $(cat <FILE_PATH>);do host $i | grep "has address" | grep <DOMAIN> | cut -d" " -f1,4;done
+```
 
-**Operational Workflow:**
+- **Dangerous / misconfigured settings**
+    
+    - Adding cloud storage endpoints directly to public DNS records for ease of management.
+- **Gotchas**
+    
+    - Cloud storage IPs may belong to specific regions like **s3-website-us-west-2.amazonaws.com**.
 
-1. **Resolve** subdomains from a pre-defined list.
-2. **Filter** results for the target domain and active IP addresses.
-3. **Identify** cloud-specific hostnames (e.g., `amazonaws.com`) within the resolved list.
+## Search Engine Dorking
 
-|Command|Purpose|
-|:--|:--|
-|`for i in $(cat );do host $i \|grep "has address" \|
+Target publicly indexed storage containers when searching for sensitive file types like PDFs, text documents, or source code,.
 
-### Technique: Google Dorking for Cloud Assets
+Search for company files hosted on AWS S3
 
-**Google Dorks** allow for targeted searches of indexed cloud storage files that may contain sensitive company data.
+```
+intext: <DOMAIN> inurl:amazonaws.com
+```
 
-- **When to use:** To find publicly indexed files (PDFs, text docs, code) hosted on cloud providers.
-- **Why it matters:** This identifies exposed documents and configurations without direct interaction with the target's infrastructure.
+Search for company files hosted on Azure Blob Storage
 
-|Platform|Google Dork Syntax|
-|:--|:--|
-|**AWS**|`intext: "<COMPANY_NAME>" inurl:amazonaws.com`|
-|**Azure**|`intext: "<COMPANY_NAME>" inurl:blob.core.windows.net`|
+```
+intext: <DOMAIN> inurl:blob.core.windows.net
+```
 
-### Technique: Passive Discovery via Third-Party Tools and Source Code
+- **Dangerous / misconfigured settings**
+    - **S3 buckets**, **blobs**, and **cloud storage** configured to be **accessible without authentication**.
 
-Companies often offload web assets (images, JS, CSS) to cloud storage to reduce web server load, leaving links in the application's **source code**.
+## Source Code Analysis
 
-1. **Source Code Analysis:** Inspect HTML for `dns-prefetch`, `preconnect`, or direct links to cloud URLs (e.g., `blob.core.windows.net`).
-2. **Domain Analysis:** Use tools like `domain.glass` to identify infrastructure details, SSL certificate data, and security measures like **Cloudflare**.
-3. **Bucket Specialized Search:** Use **GrayHatWarfare** to search for exposed AWS, Azure, and GCP storage.
-    - **Filter** by file format to find high-value targets.
-    - **Search** using company name abbreviations often used in naming conventions.
+Identify offloaded assets by inspecting HTML for links to cloud providers used to relieve web server load.
 
-### Attack Implications and Exposed Data
+Look for DNS prefetch/preconnect links or asset references in the source
 
-Misconfigured cloud instances can lead to the exposure of highly sensitive credentials that facilitate further exploitation.
+```
+<link rel="dns-prefetch" href="//<DOMAIN>.blob.core.windows.net">
+```
 
-|Misconfiguration / Leak|Attack Implication|
-|:--|:--|
-|**Unauthenticated S3/Blob Access**|Allows unauthorized viewing or downloading of company documents, presentations, and source code.|
-|**Exposed SSH Private Keys**|Discovery of files like `id_rsa` allows an attacker to log into machines without a password.|
-|**Naming Convention Disclosure**|Using company abbreviations in bucket names makes them easier for attackers to guess and discover via tools like GrayHatWarfare.|
+- **Edge cases**
+    - Developers often host images, JavaScript, or CSS on cloud storage to optimize performance.
 
-The discovery of a security measure, such as **Cloudflare's** "Safe" assessment, indicates the presence of a gateway layer that must be considered in the overall attack strategy.
+## Third-Party Reconnaissance
+
+### domain.glass
+
+Analyze infrastructure and security measures through third-party assessment tools.
+
+1. Navigate to domain.glass and enter `<DOMAIN>`.
+2. Check the Cloudflare security assessment status.
+3. Review SSL certificate details and DNS names for additional infrastructure hits.
+
+- **Gotchas**
+    - A **Safe** classification for Cloudflare indicates a **security measure** exists at the gateway layer.
+
+### GrayHatWarfare
+
+Passively discover and filter files stored on AWS, Azure, and GCP storage.
+
+1. Search the GrayHatWarfare database using company names or common abbreviations.
+2. Apply filters to sort by specific file formats.
+3. Look for sensitive filenames like **id_rsa** or **id_rsa.pub**,.
+
+- **Tool comparison**
+    
+    - GrayHatWarfare → `search + filters` → prefer for systematic file discovery across multiple cloud providers.
+    - Google Dorks → `inurl: + intext:` → prefer for finding specifically indexed document types.
+- **Dangerous / misconfigured settings**
+    
+    - Publicly accessible **SSH private keys** allow passwordless login to company machines.
+    - Using predictable company abbreviations within the IT infrastructure naming convention.
+- **Gotchas**
+    
+    - Staff under high pressure frequently make **fatal errors** leading to sensitive credential leaks.

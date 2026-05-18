@@ -4,53 +4,24 @@
     "type": "split",
     "children": [
       {
-        "id": "21910c063d588efc",
+        "id": "95a70d1e0cacfcdf",
         "type": "tabs",
         "children": [
           {
-            "id": "5e2e6598ad139762",
+            "id": "5dd242a4c7437ef4",
             "type": "leaf",
             "state": {
               "type": "markdown",
               "state": {
-                "file": "12 - Using Web Proxies/02 - Web Proxy/02 - Intercepting Web Requests.md",
+                "file": "12 - Using Web Proxies/04 - Web Scanner/01 - Burp Scanner.md",
                 "mode": "preview",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "02 - Intercepting Web Requests"
-            }
-          },
-          {
-            "id": "99b9fe616d3d91de",
-            "type": "leaf",
-            "state": {
-              "type": "markdown",
-              "state": {
-                "file": "0.01 - Something for me/Something for me/My prompt.md",
-                "mode": "preview",
-                "source": false
-              },
-              "icon": "lucide-file",
-              "title": "My prompt"
-            }
-          },
-          {
-            "id": "d0e52ae6fdbbc8e9",
-            "type": "leaf",
-            "state": {
-              "type": "markdown",
-              "state": {
-                "file": "03 - Information Gathering - Web Edition/05 - Crawling/04 - Creepy Crawlies.md",
-                "mode": "preview",
-                "source": false
-              },
-              "icon": "lucide-file",
-              "title": "04 - Creepy Crawlies"
+              "title": "01 - Burp Scanner"
             }
           }
-        ],
-        "currentTab": 2
+        ]
       }
     ],
     "direction": "vertical"
@@ -213,36 +184,36 @@
       "bases:Create new base": false
     }
   },
-  "active": "d0e52ae6fdbbc8e9",
+  "active": "5dd242a4c7437ef4",
   "lastOpenFiles": [
-    "03 - Information Gathering - Web Edition/05 - Crawling/01 - Crawling.md",
-    "12 - Using Web Proxies/03 - Web Fuzzer/01 - Burp Intruder.md",
-    "08 - Password Attacks/01 - Introduction/Introduction.md",
-    "02 - Footprinting/01 - Introduction/01 - Introduction.md",
-    "03 - Information Gathering - Web Edition/01 - Introduction/01 - Introduction.md",
-    "03 - Information Gathering - Web Edition/07 - Web Archives/01 - Web Archives.md",
-    "03 - Information Gathering - Web Edition/08 - Automating Recon/01 - Automating Recon.md",
-    "0.01 - Something for me/Something for me/My prompt.md",
     "0.01 - Something for me/Something for me/Something i need.md",
-    "03 - Information Gathering - Web Edition/06 - Search Engine Discovery/01 - Search Engine Discovery.md",
-    "03 - Information Gathering - Web Edition/05 - Crawling/04 - Creepy Crawlies.md",
-    "03 - Information Gathering - Web Edition/05 - Crawling/03 - Well-Known URIs.md",
-    "03 - Information Gathering - Web Edition/05 - Crawling/02 - robots.txt.md",
-    "03 - Information Gathering - Web Edition/04 - Fingerprinting/01 - Fingerprinting.md",
-    "03 - Information Gathering - Web Edition/03 - DNS & Subdomains/01 - DNS & Digging DNS.md",
-    "03 - Information Gathering - Web Edition/03 - DNS & Subdomains/02 - Subdomains & Subdomain Bruteforcing.md",
-    "03 - Information Gathering - Web Edition/03 - DNS & Subdomains/03 - DNS Zone Transfers.md",
-    "03 - Information Gathering - Web Edition/03 - DNS & Subdomains/04 - Virtual Hosts.md",
-    "03 - Information Gathering - Web Edition/03 - DNS & Subdomains/05 - Certificate Transparency Logs.md",
-    "03 - Information Gathering - Web Edition/02 - WHOIS/WHOIS.md",
-    "04 - Vulnerability Assessment/05 - Reporting/01 - Reporting.md",
-    "12 - Using Web Proxies/04 - Web Scanner/01 - Burp Scanner.md",
+    "0.01 - Something for me/Something for me/My prompt.md",
+    "01 - Network Enumeration with Nmap/03  - Bypass Security Measures/Firewall and IDS IPS Evasion.md",
+    "01 - Network Enumeration with Nmap/02 - Host Enumeration/Host Discovery.md",
+    "01 - Network Enumeration with Nmap/01 - Introduction/Introduction 1.md",
+    "02 - Footprinting/04 - Remote Management Protocols/02 - Windows Remote Management Protocols.md",
+    "02 - Footprinting/04 - Remote Management Protocols/01 - Linux Remote Management Protocols.md",
+    "02 - Footprinting/03 - Host Based Enumeration/11 - IPMI.md",
+    "02 - Footprinting/03 - Host Based Enumeration/10 - Oracle TNS.md",
+    "02 - Footprinting/03 - Host Based Enumeration/09 - MSSQL.md",
+    "02 - Footprinting/03 - Host Based Enumeration/08 - MySQL.md",
+    "02 - Footprinting/03 - Host Based Enumeration/07 - SNMP.md",
+    "02 - Footprinting/03 - Host Based Enumeration/06 - IMAP  POP3.md",
+    "02 - Footprinting/03 - Host Based Enumeration/05 - SMTP.md",
+    "02 - Footprinting/03 - Host Based Enumeration/04 - DNS.md",
+    "02 - Footprinting/03 - Host Based Enumeration/03 - NFS.md",
+    "02 - Footprinting/03 - Host Based Enumeration/02 - SMB.md",
+    "02 - Footprinting/03 - Host Based Enumeration/01 - FTP.md",
+    "02 - Footprinting/02 - Infrastructure Based Enumeration/03 - Staff.md",
+    "02 - Footprinting/02 - Infrastructure Based Enumeration/02 - Cloud Resources.md",
+    "02 - Footprinting/02 - Infrastructure Based Enumeration/01 - Domain Information.md",
+    "02 - Footprinting/01 - Introduction/01 - Introduction.md",
+    "12 - Using Web Proxies/01 - Getting started/01 - Getting started.md",
+    "0.01 - Something for me/01 - Linux/Linux Fundamentals.md",
+    "09 - Attacking Common Services/03 - FTP/01 - Attacking FTP.md",
     "12 - Using Web Proxies/03 - Web Fuzzer/02 - ZAP Fuzzer.md",
     "12 - Using Web Proxies/04 - Web Scanner",
-    "12 - Using Web Proxies/03 - Web Fuzzer/Untitled.md",
     "12 - Using Web Proxies/03 - Web Fuzzer/Untitled",
-    "04 - Vulnerability Assessment/04 - OpenVAS/01 - OpenVAS.md",
-    "04 - Vulnerability Assessment/03 - Nessus/01 - Nessus.md",
     "12 - Using Web Proxies/03 - Web Fuzzer",
     "12 - Using Web Proxies/02 - Web Proxy",
     "12 - Using Web Proxies/01 - Getting started",

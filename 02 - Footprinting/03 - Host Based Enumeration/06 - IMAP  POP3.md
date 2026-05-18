@@ -1,115 +1,119 @@
-# IMAP & POP3 Enumeration and Interaction
+## Methodology
 
-## Protocol Overview
-
-**IMAP (Internet Message Access Protocol)** and **POP3 (Post Office Protocol)** are client-server protocols used to access emails on a remote server.
-
-- **IMAP (Port 143/993):** Designed for **online management**. It supports synchronization across multiple clients, folder structures, and server-side browsing.
-- **POP3 (Port 110/995):** Designed for simple **retrieval**. It offers limited functionality: listing, retrieving, and deleting emails.
-
-**Attack Implication:** Both protocols transmit credentials and data in **plain text** unless encrypted via SSL/TLS (typically ports 993/995). If unencrypted, an attacker can intercept usernames and passwords.
+1. Scan for open mail ports (110, 143, 993, 995) to identify service types and extract **organization metadata** from SSL certificates.
+2. Probe for **cleartext credentials** if encryption is not enforced on ports 110/143.
+3. Use `curl` or `openssl` to grab banners and check for specific service versions or **anonymous login** capabilities.
+4. If credentials exist, prioritize IMAP for directory navigation or POP3 for simple mail retrieval.
 
 ---
 
 ## Service Footprinting
 
-The goal of footprinting is to identify the service version, available capabilities, and potential domain information embedded in SSL certificates.
+Identify mail services, extract certificate info, and determine if **encryption** is mandatory.
 
-### 1. Initial Scan
-
-Use Nmap to identify open ports and service versions. The default ports are **110/995 (POP3)** and **143/993 (IMAP)**.
+Check ports for service versions and grab certificate details like common names or organization info.
 
 ```
 sudo nmap <TARGET_IP> -sV -p110,143,993,995 -sC
 ```
 
-- **Why it matters:** The output reveals **capabilities** (available commands) and **SSL certificate** details (Common Name, Organization), which often provide internal domain names like `<DOMAIN>`.
-
-### 2. Interaction via cURL
-
-If you possess credentials, use `curl` to quickly list mailboxes.
+Extract the service banner and TLS version to identify the specific mail server software.
 
 ```
-curl -k 'imaps://<TARGET_IP>' --user <USERNAME>:<PASSWORD>
+curl -k 'imaps://<TARGET_IP>' --user <USERNAME>:<PASSWORD> -v
 ```
 
-- **Scenario:** Use the `-v` (verbose) flag to view the **TLS version**, certificate details, and the **service banner**, which may contain the specific mail server version.
+- Tool comparison
+    
+    - `nmap` -> `sudo nmap <TARGET_IP> -p110,143,993,995 -sC` -> prefer for initial discovery and **script-based** capability enumeration.
+    - `curl` -> `curl -k 'imaps://<TARGET_IP>'` -> prefer for quick banner grabbing and testing **credential validaton**.
+- Dangerous / misconfigured settings
+    
+    - `auth_debug`: Enables verbose authentication logging.
+    - `auth_debug_passwords`: Logs actual submitted passwords.
+    - `auth_anonymous_username`: Allows **anonymous access** via SASL.
+    - Plaintext transmission: Services running without SSL/TLS on ports 110/143.
+- Gotchas
+    
+    - **Self-signed certificates** will cause connection failures unless using `-k` in `curl` or ignoring verify errors in `openssl`.
 
----
+## Authenticated IMAP Interaction
 
-## Direct Interaction & Authentication
+Access IMAP when **hierarchical folder management** or online mail manipulation is required.
 
-After discovering the service, you can interact directly via text-based commands.
-
-### Encrypted Interaction
-
-For services running on ports 993 or 995, use OpenSSL to establish an encrypted session.
-
-**POP3 Encrypted:**
+Connect to IMAPS for manual command execution.
 
 ```
-openssl s_client -connect <TARGET_IP>:995
+openssl s_client -connect <TARGET_IP>:imaps
 ```
 
-**IMAP Encrypted:**
+Authenticate to the server; requires a leading **identifier** for every command.
 
 ```
-openssl s_client -connect <TARGET_IP>:993
+1 LOGIN <USERNAME> <PASSWORD>
 ```
 
-### Protocol Command Reference
+List all available directories and mailboxes.
 
-#### IMAP Commands (Port 143/993)
+```
+1 LIST "" *
+```
 
-Used for managing mailboxes and reading messages.
+Select a specific mailbox to enable message access.
 
-|Command|Description|
-|:--|:--|
-|`1 LOGIN <USERNAME> <PASSWORD>`|Authenticates the user.|
-|`1 LIST "" *`|Lists all directories/folders.|
-|`1 CREATE "INBOX"`|Creates a new mailbox.|
-|`1 DELETE "INBOX"`|Deletes a mailbox.|
-|`1 RENAME "Old" "New"`|Renames a mailbox.|
-|`1 SELECT INBOX`|Selects a mailbox to access messages.|
-|`1 FETCH <ID> all`|Retrieves data for a specific message.|
-|`1 LOGOUT`|Closes the connection.|
+```
+1 SELECT INBOX
+```
 
-#### POP3 Commands (Port 110/995)
+Fetch all data for a specific message by its ID.
 
-Used for basic email retrieval.
+```
+1 FETCH <ID> all
+```
 
-|Command|Description|
-|:--|:--|
-|`USER <USERNAME>`|Identifies the user.|
-|`PASS <PASSWORD>`|Authenticates the user.|
-|`STAT`|Requests the number and total size of saved emails.|
-|`LIST`|Requests the number and size of all individual emails.|
-|`RETR <ID>`|Retrieves a specific email by ID.|
-|`DELE <ID>`|Deletes a specific email by ID.|
-|`CAPA`|Lists server capabilities.|
-|`QUIT`|Closes the connection.|
+- Edge cases
+    
+    - Use `1 LSUB "" *` if you only need to see mailboxes the user has specifically **subscribed** to.
+- Gotchas
+    
+    - **Missing identifiers** (e.g., the "1" before LOGIN) will cause the server to ignore or reject commands.
+    
+    > ⚠️ Gap: The source does not specify how to generate the Base64 hash required for `AUTHENTICATE PLAIN` seen in the output, which will cause manual authentication attempts via that specific command to fail. Use `1 LOGIN` for plaintext-equivalent manual auth.
+    
 
----
+## Authenticated POP3 Interaction
 
-## Misconfigured & Dangerous Settings
+Access POP3 for basic **listing and retrieval** when IMAP is unavailable or unnecessary.
 
-Administrators may enable debugging or verbose logging, which can leak sensitive data into log files.
+Connect to POP3S to interact with the encrypted service.
 
-|Setting|Attack Implication|
-|:--|:--|
-|`auth_debug`|Enables all authentication debug logging; may reveal internal logic.|
-|`auth_debug_passwords`|**High Risk:** Logs the actual submitted passwords and their schemes.|
-|`auth_verbose`|Logs unsuccessful login attempts and the reasons for failure.|
-|`auth_verbose_passwords`|Logs passwords used for authentication (may be truncated).|
-|`auth_anonymous_username`|Specifies a username for anonymous logins, potentially allowing access without a known account.|
+```
+openssl s_client -connect <TARGET_IP>:pop3s
+```
 
----
+Authenticate via standard POP3 login flow.
 
-## Operational Workflow: Credential Testing
+```
+USER <USERNAME>
+PASS <PASSWORD>
+```
 
-If credentials (e.g., `<USERNAME>:<PASSWORD>`) are recovered from other services like SMTP, they should be tested against IMAP and POP3 to gain access to mailbox content.
+Check the number of messages and total mailbox size.
 
-1. **Establish Connection:** Use `openssl` or `nc`.
-2. **Authenticate:** Use the `LOGIN` (IMAP) or `USER/PASS` (POP3) commands.
-3. **Enumerate Folders:** Use `LIST` to find sensitive locations like "Important" or "Sent".
-4. **Read Mail:** Use `FETCH` or `RETR` to extract message contents for further reconnaissance.
+```
+STAT
+```
+
+Retrieve the full content of a specific email.
+
+```
+RETR <ID>
+```
+
+- Tool comparison
+    
+    - `IMAP` -> `1 SELECT INBOX` -> prefer for complex **folder structures**.
+    - `POP3` -> `RETR <ID>` -> prefer for simple, linear **message recovery**.
+- Gotchas
+    
+    - **DELE** commands in POP3 are often final; messages are removed from the server once the session closes if the delete flag is set.

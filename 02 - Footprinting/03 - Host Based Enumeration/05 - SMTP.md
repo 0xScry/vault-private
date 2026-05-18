@@ -1,140 +1,108 @@
-### **SMTP Protocol Overview**
+## Methodology
 
-The **Simple Mail Transfer Protocol (SMTP)** is used for sending emails across IP networks, either between a client and a server or between two servers. By default, it operates on **TCP port 25**. Newer implementations often use **TCP port 587** for authenticated submissions using **STARTTLS** to upgrade a plaintext connection to an encrypted one.
-
-|Component|Description|
-|:--|:--|
-|**Mail User Agent (MUA)**|The client/program used to send and receive emails.|
-|**Mail Submission Agent (MSA)**|A relay server that checks the validity and origin of the email to relieve the MTA.|
-|**Mail Transfer Agent (MTA)**|Software responsible for sending, receiving, and storing emails; it searches DNS for recipient IP addresses.|
-|**Mail Delivery Agent (MDA)**|Transfers the email from the destination SMTP server to the recipient's mailbox.|
+1. Identify open SMTP ports 25, 587, or 465
+2. Enumerate supported service extensions and commands via EHLO
+3. Test for user enumeration via VRFY or EXPN if available
+4. Audit for Open Relay misconfigurations using Nmap scripts
+5. Attempt manual email transmission to test filtering or spoofing
 
 ---
 
-### **Service Footprinting**
+## Service Footprinting
 
-**Footprinting** is used to identify the version of the SMTP service and determine which commands the server supports, which informs further enumeration or exploitation steps.
+Use when port 25, 587, or 465 shows up in initial port scans.
 
-#### **1. Automated Enumeration**
-
-Use **Nmap** to identify the service version and supported SMTP extensions.
+Enumerate basic service info and supported commands
 
 ```
-sudo nmap <TARGET_IP> -sC -sV -p25
+sudo nmap <TARGET_IP> -sC -sV -p<PORT>
 ```
 
-- **Why it matters:** The `smtp-commands` script uses `EHLO` to list capabilities like `VRFY`, `STARTTLS`, or `AUTH PLAIN`.
+Initialize connection manually to check banners and EHLO response
 
-#### **2. Open Relay Testing**
+```
+telnet <TARGET_IP> <PORT>
+```
 
-An **Open Relay** occurs when a server is misconfigured to allow any IP address to send mail through it, facilitating spam or email spoofing.
+Establish session and list extensions
+
+```
+EHLO <DOMAIN>
+```
+
+**Tool comparison**
+
+- Nmap
+    - `sudo nmap <TARGET_IP> -sC -sV -p25`
+    - Prefer for automated command discovery via `smtp-commands` script
+- Telnet
+    - `telnet <TARGET_IP> 25`
+    - Prefer for manual interaction and testing specific protocol responses
+
+**Dangerous / misconfigured settings**
+
+- Standard SMTP (port 25) transmitting **plaintext** authentication or data
+
+**Gotchas** **STARTTLS** is required on port 587 to upgrade to an encrypted connection before authentication.
+
+## User Enumeration
+
+Use when the target SMTP server supports the VRFY or EXPN commands to identify valid system accounts.
+
+Verify a specific username
+
+```
+VRFY <USERNAME>
+```
+
+**Edge cases**
+
+- If the server is accessed through a web proxy, use the CONNECT method first
+
+```
+CONNECT <TARGET_IP>:25 HTTP/1.0
+```
+
+**Gotchas** **Response code 252** may be issued by the server to confirm users that do not actually exist.
+
+> ⚠️ Gap: Automated tools may report false positives if the server is configured to return **252** for all queries.
+
+## Manual Interaction and Spoofing
+
+Use when you need to bypass MUAs or test if the MTA/MSA allows spoofed sender addresses.
+
+Complete mail transmission workflow
+
+```
+MAIL FROM:<USERNAME>@<DOMAIN>
+RCPT TO:<USERNAME>@<DOMAIN>
+DATA
+From: <USERNAME>@<DOMAIN>
+To: <USERNAME>@<DOMAIN>
+Subject: <SUBJECT>
+
+<MESSAGE_BODY>
+.
+```
+
+**Dangerous / misconfigured settings**
+
+- Missing authentication requirements for the **Mail Submission Agent (MSA)**
+
+**Gotchas** The **email header** is separate from the envelope and does not drive technical delivery, but contains info for the recipient.
+
+## Open Relay Identification
+
+Use when an SMTP server is suspected of forwarding mail for unauthorized external senders.
+
+Run automated relay tests
 
 ```
 sudo nmap <TARGET_IP> -p25 --script smtp-open-relay -v
 ```
 
-- **Attack Implication:** If identified as an open relay, an attacker can **spoof emails** or potentially read communications between parties.
+**Dangerous / misconfigured settings**
 
----
+- `mynetworks = 0.0.0.0/0` in Postfix configuration allows any IP to relay mail
 
-### **User Enumeration**
-
-**Enumeration** is performed to identify valid system users through the SMTP service.
-
-#### **Technique: VRFY Command**
-
-The `VRFY` command checks if a specific mailbox exists.
-
-```
-telnet <TARGET_IP> 25
-VRFY <USERNAME>
-```
-
-|Response|Implication|
-|:--|:--|
-|**250**|User exists/is valid.|
-|**252**|The server confirms existence but may be a **false positive** due to configuration.|
-
-- **Edge Case:** Do not rely solely on automated tools for user enumeration; administrators often configure servers to issue code **252** for all queries, regardless of whether the user exists.
-
----
-
-### **Operational Workflow: Sending a Manual Email**
-
-Use this workflow to manually interact with the SMTP server via **Telnet** to test for delivery or spoofing capabilities.
-
-1. **Connect** to the target SMTP service.
-    
-    ```
-    telnet <TARGET_IP> 25
-    ```
-    
-2. **Initiate the session** using `HELO` or `EHLO` (Extended SMTP).
-    
-    ```
-    EHLO <DOMAIN>
-    ```
-    
-3. **Specify the sender** address.
-    
-    ```
-    MAIL FROM: <USERNAME>@<DOMAIN>
-    ```
-    
-4. **Specify the recipient** address.
-    
-    ```
-    RCPT TO: <USERNAME>@<DOMAIN>
-    ```
-    
-5. **Initiate data transmission** for the email body.
-    
-    ```
-    DATA
-    ```
-    
-6. **Input email content** (Header + Body). End the message with a single dot `.` on its own line.
-    
-    ```
-    From: <USERNAME>@<DOMAIN>
-    To: <USERNAME>@<DOMAIN>
-    Subject: <SUBJECT>
-    
-    <MESSAGE_BODY>
-    .
-    ```
-    
-7. **Terminate** the session.
-    
-    ```
-    QUIT
-    ```
-    
-
----
-
-### **SMTP Command Reference**
-
-|Command|Goal|
-|:--|:--|
-|**AUTH PLAIN**|Authenticates the client using a service extension.|
-|**HELO / EHLO**|Identifies the client computer name and starts the session.|
-|**MAIL FROM**|Identifies the sender of the email.|
-|**RCPT TO**|Identifies the recipient of the email.|
-|**DATA**|Starts the transmission of the email content.|
-|**RSET**|Aborts current email transmission but keeps the connection open.|
-|**EXPN**|Checks if a mailbox is available for messaging.|
-|**NOOP**|Prevents connection timeout by requesting a server response.|
-
----
-
-### **Dangerous Configurations**
-
-Misconfigurations in the Postfix configuration file (`/etc/postfix/main.cf`) lead to security vulnerabilities.
-
-|Setting|Risk|Attack Path|
-|:--|:--|:--|
-|`mynetworks = 0.0.0.0/0`|**Open Relay**|Allows any external user to send/spoof emails through the server.|
-|**Unencrypted Connections**|**Credential Theft**|Default SMTP transmits authentication (`AUTH PLAIN`) in plaintext unless `STARTTLS` is enforced.|
-
-**Scenario Context:** If inbound connections to a pivot are blocked, you can use a **Web Proxy** to connect to the SMTP server using the `CONNECT <TARGET_IP>:25 HTTP/1.0` command.
+**Gotchas** **16 different tests** are typically performed by Nmap to confirm relay status.

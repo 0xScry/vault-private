@@ -1,88 +1,89 @@
-# Firewall and IDS/IPS Evasion with Nmap
+1. SYN scan returns `filtered`.
+2. Run ACK scan (`-sA`) to check if the firewall is stateful or filtering based on the SYN flag.
+3. If ports show as `unfiltered`, use `--source-port 53` to exploit weak firewall rules trusting DNS traffic.
+4. If scanning triggers an IDS/IPS block, switch to decoy scanning (`-D RND:<COUNT>`) or use different VPS IPs.
+5. If specific subnets are suspected to have access, spoof the source IP (`-S`).
 
-### 1. Identifying Firewall Rules
+---
 
-Firewalls protect networks by monitoring traffic and deciding to **pass, ignore (drop), or block (reject)** packets based on defined rules. Understanding how a firewall responds is critical for determining the correct evasion technique.
+## Firewall Rule Identification
 
-- **Dropped Packets:** The firewall ignores the packet and returns **no response**. Nmap labels these ports as `filtered`.
-- **Rejected Packets:** The firewall sends an explicit response. TCP packets return an **RST** flag; ICMP packets return error codes (e.g., net/host/port unreachable).
+Standard SYN scans return `filtered` when the firewall drops packets without response or `closed` when it explicitly rejects them with RST/ICMP errors.
 
-### 2. Bypassing Stateless Firewalls (ACK Scan)
-
-**When to use:** Use when standard SYN scans (`-sS`) or Connect scans (`-sT`) are blocked by a firewall that filters incoming SYN packets. **Why it works:** Firewalls often allow packets with the **ACK flag** because they cannot determine if the connection was originally established from the internal network.
-
-**Operational Workflow:**
-
-1. Perform a standard SYN scan to identify `filtered` ports.
-2. Execute an ACK scan on the same ports.
-3. **Analyze results:** If an ACK scan receives an **RST** flag from a port previously marked as `filtered`, the port is actually **unfiltered** (and likely open), meaning the firewall only blocks connection initiation (SYN).
+ACK scan to identify if the firewall passes packets regardless of state
 
 ```
 sudo nmap <TARGET_IP> -p <PORT> -sA -Pn -n --disable-arp-ping --packet-trace
 ```
 
-### 3. Disguising Scan Origin (Decoys)
+- **SYN Scan** → `-sS` → Prefer for initial discovery; identifies port state as open/closed/filtered.
+    
+- **ACK Scan** → `-sA` → Prefer for mapping firewall rules; identifies ports as `unfiltered` if they return an RST flag.
+    
+- **Open ports appearing as unfiltered**: The ACK scan cannot distinguish between open and closed ports; it only confirms the firewall allows the packet through.
+    
 
-**When to use:** Use when an **IPS** is likely to block your IP address or when administrators block specific subnets. **Why it works:** Nmap inserts random IP addresses into the IP header to hide the actual source of the scan.
+## Source Port Manipulation
 
-**Operational Workflow:**
+The firewall blocks standard high-port requests but allows traffic originating from "trusted" ports like DNS (53).
 
-1. Select a number of random decoys.
-2. Ensure decoys are **alive**; if decoys are dead, the target may become unreachable due to SYN-flooding security mechanisms.
-3. The attack IP is randomly placed among the decoys to mask the true origin.
-
-```
-sudo nmap <TARGET_IP> -p <PORT> -sS -Pn -n --disable-arp-ping -D RND:5
-```
-
-### 4. Testing Subnet-Based Access (Source IP Spoofing)
-
-**When to use:** Use when the target network only allows access to specific services from **trusted subnets** or specific source IPs. **Why it works:** By spoofing a trusted source IP, you can bypass filters that are configured to trust internal or specific external ranges.
+SYN scan from the DNS source port
 
 ```
-sudo nmap <TARGET_IP> -n -Pn -p <PORT> -O -S <SPOOFED_IP> -e <INTERFACE>
+sudo nmap <TARGET_IP> -p <PORT> -sS -Pn -n --disable-arp-ping --source-port 53
 ```
 
-_Note: This often requires specifying the network interface (e.g., `tun0`)._
-
-### 5. Exploiting Trusted Ports (Source Port Manipulation)
-
-**When to use:** Use when a firewall is configured to trust traffic originating from specific ports, such as **DNS (UDP/TCP 53)**. **Why it works:** Administrators often weaken IDS/IPS filters for "trusted" ports to ensure critical services like DNS resolution function correctly.
-
-**Operational Workflow:**
-
-1. Identify a port marked as `filtered` via standard scanning.
-2. Rescan using a common trusted source port like 53.
-3. If successful, use **Netcat** to establish a connection using the same trusted source port.
-
-**Scan Command:**
-
-```
-sudo nmap <TARGET_IP> -p <PORT> -sS -Pn -n --source-port 53
-```
-
-**Connection Command:**
+Direct service connection using a specific source port
 
 ```
 ncat -nv --source-port 53 <TARGET_IP> <PORT>
 ```
 
-### Command Reference: Evasion Options
+- Misconfigured firewalls often trust TCP/UDP 53 to allow DNS resolution without inspecting the payload.
+    
+- **IDS/IPS detection**: Even if the firewall allows port 53, an active IPS may still inspect and block non-DNS traffic on that port.
+    
 
-|Option|Description|Logic/Decision Point|
-|:--|:--|:--|
-|`-sA`|TCP ACK Scan|Bypasses stateless firewalls that only block SYN packets.|
-|`-D RND:<NUMBER>`|Decoy Scan|Masks the attack IP among a set of random, live IP addresses.|
-|`-S <IP>`|Source IP Spoofing|Tests if a target service is accessible from a different subnet.|
-|`--source-port <PORT>`|Set Source Port|Bypasses firewalls that trust specific ports like 53 (DNS).|
-|`-Pn`|Disable ICMP Echo|Prevents Nmap from being blocked by firewalls that drop ICMP requests.|
-|`-n`|Disable DNS Resolution|Increases speed and reduces noise by avoiding reverse DNS queries.|
-|`--packet-trace`|Show Packet Traffic|Essential for verifying which flags (SYN, ACK, RST, SA) are being returned.|
+## Source IP Spoofing
 
-### Misconfigured Security Settings
+Access is restricted to specific trusted subnets or internal IP ranges.
 
-|Setting|Attack Implication|
-|:--|:--|
-|**Stateless Filtering**|Allows `-sA` (ACK) packets to pass, revealing "unfiltered" ports that can be further targeted.|
-|**Trusted Source Ports**|Allows an attacker to bypass the firewall by simply setting their source port to 53 or other common service ports.|
-|**Subnet Trust**|Allows an attacker to access restricted services by spoofing an IP from an allowed range.|
+Scan using a different source IP and specific interface
+
+```
+sudo nmap <TARGET_IP> -n -Pn -p <PORT> -O -S <PIVOT_IP> -e <SERVICE_NAME>
+```
+
+> ⚠️ Gap: Nmap cannot receive the response packets when spoofing an IP unless you have a way to capture traffic on the spoofed host's network or the target network.
+
+- **ISP/Router egress filtering**: Most modern networks will drop packets with spoofed source IPs that do not belong to their range.
+
+## Decoy Scanning
+
+The target uses an active IDS/IPS that blocks the scanner's IP after a few probes.
+
+Hide the real attack IP among five random alive decoys
+
+```
+sudo nmap <TARGET_IP> -p <PORT> -sS -Pn -n --disable-arp-ping -D RND:5
+```
+
+- **Dead decoys**: Using inactive IP addresses for decoys can lead to SYN-flooding the target, causing service outages or triggering aggressive security responses.
+
+## Output Management
+
+Scanning results need to be preserved for comparison or reporting.
+
+Save results in normal, grepable, and XML formats simultaneously
+
+```
+sudo nmap <TARGET_IP> -p- -oA <FILE_PATH>
+```
+
+Convert XML output to a readable HTML report
+
+```
+xsltproc <FILE_PATH>.xml -o <FILE_PATH>.html
+```
+
+- **Missing paths**: If no full path is provided, Nmap writes files to the current working directory.

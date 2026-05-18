@@ -1,177 +1,154 @@
-# FTP and TFTP Enumeration and Exploitation
-
-## Protocol Overview
-
-### File Transfer Protocol (FTP)
-
-FTP is an application layer protocol within the TCP/IP stack used for uploading and downloading files.
-
-- **Control Channel:** Established on **TCP port 21** for sending commands and receiving status codes.
-- **Data Channel:** Established on **TCP port 20** exclusively for data transmission.
-- **Security:** FTP is a **clear-text** protocol, making it susceptible to sniffing under certain network conditions.
-
-|Mode|Operation|Use Case|
-|:--|:--|:--|
-|**Active**|The client connects to port 21 and informs the server which client-side port to use for responses.|Standard connection when no client-side firewall is present.|
-|**Passive**|The server announces a port for the client to establish the data channel.|**Use when a firewall protects the client**, as the client initiates the connection to bypass inbound blocks.|
-
-### Trivial File Transfer Protocol (TFTP)
-
-TFTP is a simpler, **unreliable** protocol compared to FTP.
-
-- **Transport:** Uses **UDP** instead of TCP.
-- **Authentication:** Does not support passwords or user authentication.
-- **Limitations:** No directory listing functionality; access is restricted based on OS file permissions,.
-- **Security:** Should only be used in local, protected networks due to lack of security features.
+1. Scan for TCP **port 21** or UDP **port 69** to identify file transfer services.
+2. Attempt **anonymous login** on FTP using `anonymous` or `ftp` with no password.
+3. If the connection fails or hangs, switch between **active and passive FTP** modes to bypass firewalls.
+4. For encrypted connections, use OpenSSL to extract certificates and potential **hostnames or email addresses**.
+5. On TFTP, proceed blindly with `get` for common configuration files since **directory listing is unavailable**.
+6. Audit `/etc/vsftpd.conf` if local access is gained to find **misconfigured upload permissions**.
 
 ---
 
-## Footprinting and Enumeration
+## FTP Interaction and Enumeration
 
-### Nmap Scanning
+Target exposes TCP port 21 and potentially allows unauthenticated access.
 
-Initial footprinting identifies the service, version, and potential misconfigurations using the Nmap Scripting Engine (NSE),.
+Interactive login attempt
 
-1. **Update NSE Database:** Ensure scripts are current before scanning.
-    
-    ```
-    sudo nmap --script-updatedb
-    ```
-    
-2. **Execute Targeted Scan:** Use version detection, default scripts, and aggressive scanning to identify FTP banners and anonymous access.
-    
-    ```
-    sudo nmap -sV -p21 -sC -A <TARGET_IP>
-    ```
-    
-3. **Trace Script Execution:** **Use when debugging** scan results to see the specific commands and ports used by Nmap.
-    
-    ```
-    sudo nmap -sV -p21 -sC -A <TARGET_IP> --script-trace
-    ```
-    
+```
+ftp <TARGET_IP>
+```
 
-### Service Interaction
+Grab version and status information
 
-Interacting with the service via standard tools can reveal version information and system types via the **220 banner**.
+```
+ftp> status
+```
 
-|Tool|Command|Goal|
-|:--|:--|:--|
-|**nc**|`nc -nv <TARGET_IP> 21`|Basic service banner grabbing and interaction,.|
-|**telnet**|`telnet <TARGET_IP> 21`|Alternative method for manual service interaction.|
-|**openssl**|`openssl s_client -connect <TARGET_IP>:21 -starttls ftp`|**Use when FTP uses TLS/SSL** to inspect certificates for hostnames, emails, or locations,.|
+Enable detailed packet output for troubleshooting data channel issues
 
----
+```
+ftp> debug
+ftp> trace
+```
 
-## Operational Workflows
+Recursive directory listing to map the entire filesystem at once
 
-### 1. Anonymous Login and Information Gathering
+```
+ftp> ls -R
+```
 
-**Scenario:** Use when a server allows public access without credentials to identify files that might assist in other attack vectors,.
-
-1. Connect to the target using the `ftp` client.
+- **Tool comparison**
     
-    ```
-    ftp <TARGET_IP>
-    ```
+    - `ftp`: standard interactive client; use for manual exploration
+    - `nc`: `nc -nv <TARGET_IP> 21`; use for raw banner grabbing
+    - `telnet`: `telnet <TARGET_IP> 21`; alternative for manual banner interaction
+- **Dangerous / misconfigured settings**
     
-2. Enter `<USERNAME>` as `anonymous` and leave the password blank.
-3. Check the connection status and enabled features.
+    - `anonymous_enable=YES`: allows public access without credentials
+    - `no_anon_password=YES`: bypasses password prompt for anonymous users
+    - `write_enable=YES`: enables commands like STOR, DELE, and MKD
+- **Gotchas**
     
-    ```
-    ftp> status
-    ```
-    
-4. Enable **debug** or **trace** modes to see raw server responses and command details.
-    
-    ```
-    ftp> debug
-    ftp> trace
-    ```
-    
-5. List contents. If `ls_recurse_enable=YES` is set in the config, use `-R` to view the entire directory structure at once,.
-    
-    ```
-    ftp> ls -R
-    ```
-    
+    - **Firewall blocks responses** in active mode; use `PASV` command to force the server to provide a data port.
+    - **Clear-text protocol** allows credentials to be sniffed if the network environment permits.
 
-### 2. Automated Recursive Download
+## FTP Mass Exfiltration
 
-**Scenario:** Use to quickly grab all accessible files for local inspection. **Warning:** This is noisy and may trigger security alarms.
+Directory listing is successful and contains a large volume of data or deep nesting.
 
-1. Use `wget` to mirror the FTP directory locally.
+Mirror the entire FTP share locally without interactive prompts
+
+```
+wget -m --no-passive ftp://anonymous:anonymous@<TARGET_IP>
+```
+
+- **Edge cases**
+    - Mirroring large shares can **trigger alerts** due to unusual traffic volume.
+
+## Encrypted FTP Discovery
+
+Service requires TLS/SSL or you need to extract metadata from the certificate.
+
+Connect using STARTTLS to view the certificate chain
+
+```
+openssl s_client -connect <TARGET_IP>:21 -starttls ftp
+```
+
+- **Edge cases**
+    - SSL certificates often contain **hostnames, internal locations, or admin emails** in the CN or OU fields.
+
+## Automated FTP Footprinting
+
+Rapid identification of vulnerabilities or configuration flaws across multiple targets.
+
+Update the NSE database before scanning
+
+```
+sudo nmap --script-updatedb
+```
+
+Run default FTP scripts and version detection
+
+```
+sudo nmap -sV -p21 -sC -A <TARGET_IP>
+```
+
+Trace script execution to see raw commands like `STAT` or `PORT`
+
+```
+sudo nmap -sV -p21 -sC -A <TARGET_IP> --script-trace
+```
+
+- **Tool comparison**
+    - `ftp-anon.nse`: checks for anonymous access and lists root directory
+    - `ftp-syst.nse`: runs `STAT` to find server status and version
+
+## TFTP Interaction
+
+UDP port 69 is open; requires blind file retrieval due to lack of authentication and listing features.
+
+Connect to the remote host
+
+```
+tftp <TARGET_IP>
+```
+
+Download a specific file
+
+```
+tftp> get <FILE_PATH>
+```
+
+- **Dangerous / misconfigured settings**
     
-    ```
-    wget -m --no-passive ftp://anonymous:anonymous@<TARGET_IP>
-    ```
+    - **Global read/write permissions** are often required on the OS level for TFTP to function, exposing sensitive files.
+- **Gotchas**
     
-2. Inspect the downloaded directory structure.
+    - **Unreliable protocol** because it uses UDP; requires application-layer recovery.
+    - > ⚠️ Gap: TFTP lacks directory listing; you must have a pre-existing list of filenames or guess them to retrieve data.
+        
+
+## VSFTPD Configuration Audit
+
+Local access or a misconfigured upload allows reading the server configuration file.
+
+Review active configuration settings excluding comments
+
+```
+cat /etc/vsftpd.conf | grep -v "#"
+```
+
+Check for users explicitly denied FTP access
+
+```
+cat /etc/ftpusers
+```
+
+- **Dangerous / misconfigured settings**
     
-    ```
-    tree .
-    ```
+    - `anon_upload_enable=YES`: allows anonymous users to upload files
+    - `anon_mkdir_write_enable=YES`: allows anonymous users to create directories
+    - `chroot_local_user=NO`: may allow users to escape their home directory if not enabled
+- **Gotchas**
     
-
-### 3. Testing Upload Permissions (Potential RCE)
-
-**Scenario:** If a web server shares a directory with FTP, uploading a file can lead to **Remote Command Execution (RCE)** or privilege escalation,.
-
-1. Create a test file locally.
-    
-    ```
-    touch testupload.txt
-    ```
-    
-2. Upload the file to the FTP server.
-    
-    ```
-    ftp> put testupload.txt
-    ```
-    
-3. Verify the upload was successful and check permissions.
-    
-    ```
-    ftp> ls
-    ```
-    
-
-### 4. TFTP File Transfer
-
-**Scenario:** Used in protected environments to move files when authentication is not required.
-
-1. Connect to the TFTP server.
-    
-    ```
-    tftp <TARGET_IP>
-    ```
-    
-2. Download a specific file (requires knowing the exact filename).
-    
-    ```
-    tftp> get <FILENAME>
-    ```
-    
-
----
-
-## Configuration Auditing
-
-### vsFTPd Dangerous Settings
-
-Misconfigurations in `/etc/vsftpd.conf` can lead to unauthorized access or data disclosure,.
-
-|Setting|Risk/Implication|
-|:--|:--|
-|`anonymous_enable=YES`|Allows anyone to login without a password.|
-|`anon_upload_enable=YES`|Allows anonymous users to upload files, risking malware or web shells.|
-|`anon_mkdir_write_enable=YES`|Allows anonymous users to create new directories.|
-|`write_enable=YES`|Enables various write commands (STOR, DELE, etc.), potentially allowing file tampering.|
-|`hide_ids=YES`|Overwrites UID/GID with "ftp" in listings, making it harder to identify file ownership,.|
-|`ls_recurse_enable=YES`|Allows recursive directory listings, making full-server enumeration easier for attackers,.|
-
-### Security Controls
-
-- **Access Control:** The `/etc/ftpusers` file is used to explicitly deny specific local users (e.g., `root`, `john`) from logging into FTP.
-- **Encryption:** `ssl_enable=YES` (not default) is required to secure the clear-text protocol.
-- **Brute Force Protection:** Implementations like **fail2ban** are common to block IPs after multiple failed login attempts.
+    - **Hiding IDs** via `hide_ids=YES` will show all file owners as `ftp`, masking the actual UIDs/GIDs.

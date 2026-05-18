@@ -1,62 +1,68 @@
-### Passive Information Gathering Methodology
+1. Scrutinize main website text and SSL certificates to identify initial service structures and secondary domains.
+2. Query Certificate Transparency logs via crt.sh to expand the subdomain list.
+3. Resolve subdomains to IPs and filter out third-party hosted infrastructure to define the actionable attack surface.
+4. Pivot target-owned IPs to Shodan to identify open ports and service versions without direct interaction.
+5. Execute DNS ANY queries to find TXT records revealing third-party SaaS integrations like Atlassian, O365, or Mailgun.
 
-The goal of passive information gathering is to understand a company's **Internet presence**, **infrastructure**, and **technologies** without making direct connections that could expose the penetration tester. By navigating as a "customer" or "visitor," you remain hidden while identifying the company's functionality and structure,.
+---
 
-#### 1. Website Scrutiny
+## Subdomain Discovery via Certificate Transparency
 
-Before using technical tools, analyze the company's main website to understand their services.
+When to use: Target domain is known and you need to find subdomains or sibling domains via public logs.
 
-- **Goal:** Identify what technologies are required to support their specific industry (e.g., IoT, hosting, or data science).
-- **Perspective:** Use a **"developer's view"** to infer technical functionality and internal structures from the services they offer.
+Fetch raw JSON data for a domain from crt.sh
 
-#### 2. Subdomain Discovery (Certificate Transparency)
+```
+curl -s https://crt.sh/?q=<DOMAIN>&output=json | jq .
+```
 
-SSL certificates often contain multiple subdomains and indicate active services. **Certificate Transparency (CT)** logs provide an audit-proof database of issued certificates.
+Parse crt.sh JSON output into a unique list of subdomains
 
-|Command|Purpose|
-|:--|:--|
-|`curl -s https://crt.sh/?q=&output=json \|jq .`|
-|`curl -s https://crt.sh/?q=&output=json \|jq . \|
+```
+curl -s https://crt.sh/?q=<DOMAIN>&output=json | jq . | grep name | cut -d":" -f2 | grep -v "CN=" | cut -d'"' -f2 | awk '{gsub(/\n/,"\n");}1;' | sort -u
+```
 
-#### 3. Infrastructure Identification
+- Gotcha: **Results will differ** between the web interface and command line tools depending on how the database stores and retrieves new entries.
 
-It is critical to distinguish between **company-hosted servers** and **third-party providers**. Testing third-party hosts without explicit permission is prohibited.
+## Infrastructure Validation
 
-**Operational Workflow:**
+When to use: A subdomain list exists and you must separate target-owned assets from third-party providers.
 
-1. Generate a list of subdomains.
-2. Resolve subdomains to IP addresses.
-3. Filter for IPs belonging to the target organization's infrastructure,.
+Filter a subdomain list to identify IPs associated with the target domain
 
-|Technique|Command|
-|:--|:--|
-|**Filter Hosted Servers**|`for i in $(cat <SUBDOMAIN_LIST>);do host $i \|
-|**Generate IP List**|`for i in $(cat <SUBDOMAIN_LIST>);do host $i \|
+```
+for i in $(cat <FILE_PATH>);do host $i | grep "has address" | grep <DOMAIN> | cut -d" " -f1,4;done
+```
 
-#### 4. Service Identification via Shodan
+- Gotcha: **Permission failure** occurs if you test hosts belonging to third-party providers without their specific authorization.
 
-Shodan searches for open TCP/IP ports on devices permanently connected to the Internet. Use this to identify IoT devices, industrial controllers, and server versions without performing an active scan.
+## Passive Service Mapping
 
-|Command|Purpose|
-|:--|:--|
-|`shodan host <TARGET_IP>`|Query Shodan for open ports, service versions (e.g., nginx, OpenSSH), and location data for a specific IP,.|
-|**Bulk Shodan Query**|`for i in $(cat ip-addresses.txt);do shodan host $i;done`|
+When to use: Validated target IPs are identified and you need port, protocol, and banner information without making direct connections.
 
-#### 5. DNS Record Analysis
+Extract IP addresses from a validated subdomain list for further scanning
 
-Analyzing DNS records (A, MX, NS, TXT, SOA) reveals technical insights into the target's environment and third-party integrations,.
+```
+for i in $(cat <FILE_PATH>);do host $i | grep "has address" | grep <DOMAIN> | cut -d" " -f4 >> ip-addresses.txt;done
+```
 
-- **Command:** `dig any <DOMAIN>`
+Query Shodan for host information, open ports, and service banners using a list of IPs
 
-**Attack Implications of Identified Services:**
+```
+for i in $(cat ip-addresses.txt);do shodan host $i;done
+```
 
-|Service Detected|Indicator (TXT/MX Records)|Potential Attack Vector/Unlocks|
-|:--|:--|:--|
-|**Atlassian**|`atlassian-domain-verification`|Indicates software development/collaboration; check for vulnerabilities or leaked info.|
-|**Google Gmail**|`_spf.google.com`|Possible access to open GDrive folders or files via shared links.|
-|**LogMeIn**|`logmein-verification-code`|Centralized remote access management; admin access unlocks all managed systems.|
-|**Mailgun**|`include:mailgun.org`|Identify API interfaces to test for IDOR, SSRF, or unauthorized POST/PUT requests.|
-|**Outlook/O365**|`include:spf.protection.outlook.com`|Potential for Azure blob/file storage access or SMB protocol vulnerabilities.|
-|**INWX**|`MS=<ID/USERNAME>`|Hosting provider; "MS" values may reveal the username/ID for the management platform.|
+- Gotcha: **Stale data** may be present as Shodan relies on its most recent crawl rather than real-time state.
 
-**Infrastructure Decision Point:** Identification of specific IP addresses (e.g., from TXT records or Shodan) marks the transition point where you determine which hosts to prioritize for later **active investigations**.
+## DNS and SaaS Footprinting
+
+When to use: Mapping the company's reliance on external platforms and identifying potential API or remote access vectors.
+
+Retrieve all available DNS records for a domain
+
+```
+dig any <DOMAIN>
+```
+
+- Edge cases: Look for **MS** or **verification-code** values in TXT records which often reveal the username or ID used for management platforms.
+- Gotcha: **Administrative takeover** is possible if you obtain credentials for centralized platforms like LogMeIn which manage remote access across the infrastructure.

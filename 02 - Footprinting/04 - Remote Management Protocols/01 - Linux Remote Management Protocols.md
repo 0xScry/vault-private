@@ -1,105 +1,122 @@
-### **Linux Remote Management Protocols**
-
-#### **1. Secure Shell (SSH)**
-
-SSH is the standard for encrypted remote management on **TCP port 22**. While secure by design, misconfigurations or outdated versions (SSH-1) provide entry points for attackers.
-
-**A. Service Fingerprinting** Use these techniques to identify the SSH version, supported authentication methods, and potential cryptographic weaknesses.
-
-|Goal|Command|
-|:--|:--|
-|**Audit** server/client configuration and encryption algorithms|`./ssh-audit.py <TARGET_IP>`|
-|**Enumerate** supported authentication methods (e.g., password, publickey)|`ssh -v <USERNAME>@<TARGET_IP>`|
-|**Force** a specific authentication method (e.g., for brute-forcing)|`ssh -v <USERNAME>@<TARGET_IP> -o PreferredAuthentications=password`|
-
-- **Decision Point:** If the banner indicates **Protocol 1**, the connection is vulnerable to **MITM attacks**.
-- **Decision Point:** If the banner (e.g., `SSH-1.99`) indicates support for both SSH-1 and SSH-2, prioritize attacking the weaker protocol.
-
-**B. Configuration Analysis** When auditing a compromised system, check `/etc/ssh/sshd_config` for settings that facilitate lateral movement or privilege escalation.
-
-**Dangerous SSH Settings**
-
-|Setting|Attack Implication|
-|:--|:--|
-|`PasswordAuthentication yes`|Enables password **brute-forcing** attempts.|
-|`PermitEmptyPasswords yes`|Allows access without a password if the account has none.|
-|`PermitRootLogin yes`|Allows direct administrative access via SSH.|
-|`Protocol 1`|Vulnerable to **Man-In-The-Middle (MITM)** attacks.|
-|`X11Forwarding yes`|Potential for command injection (specifically version 7.2p1).|
-|`AllowTcpForwarding yes`|Enables **port forwarding** to bypass firewall restrictions.|
+1. Scan for management ports 22, 512-514, and 873.
+2. If 22: Run `ssh-audit` to find weak **SSH-1** or vulnerable versions like **OpenSSH 7.2p1** (X11) or **8.2p1** (MITM). Check allowed auth methods manually.
+3. If 873: Netcat probe for share names. Attempt anonymous listing. Target `.ssh` directories for lateral movement keys.
+4. If 512-514: Attempt `rlogin` using known usernames to hit **.rhosts** or **hosts.equiv** trust bypasses. Use `rwho`/`rusers` for session discovery.
 
 ---
 
-#### **2. Rsync**
+## SSH Audit
 
-Rsync (standard **TCP port 873**) is used for fast file synchronization and backups. It is a high-value target because it often contains sensitive data (like SSH keys) and may not require authentication.
+Port 22 is open and you need to identify weak encryption algorithms or vulnerable server versions.
 
-**Operational Workflow: Enumerating and Syncing Files**
+Audit the service for weak KEX, host-key algorithms, and encryption
 
-1. **Service Identification:** Confirm Rsync is active and identify the protocol version.
-    
-    ```
-    sudo nmap -sV -p 873 <TARGET_IP>
-    ```
-    
-2. **Banner Grabbing:** Manually probe the service to list available shares.
-    
-    ```
-    nc -nv <TARGET_IP> 873
-    # Once connected, type: #list
-    ```
-    
-3. **Share Enumeration:** List the contents of a specific share without downloading them.
-    
-    ```
-    rsync -av --list-only rsync://<TARGET_IP>/<SHARE_NAME>
-    ```
-    
-4. **Data Exfiltration:** Sync all files from the remote share to your attack machine.
-    
-    ```
-    rsync -av rsync://<TARGET_IP>/<SHARE_NAME>
-    ```
-    
+```
+./ssh-audit.py <TARGET_IP>
+```
 
-- **Attack Implication:** If a `.ssh` directory is visible in the share, you may be able to pull private keys to gain direct SSH access.
-- **Scenario Context:** If standard Rsync is blocked, check if it is configured to run **over SSH** using the `-e ssh` flag.
+- **Protocol 1**: Uses outdated encryption and is **vulnerable to MITM attacks**.
+- **X11Forwarding yes**: Enables GUI but was **vulnerable to command injection** in OpenSSH 7.2p1.
+- **PermitEmptyPasswords yes**: Allows bypass if user has no password set.
+- **PermitRootLogin yes**: Allows direct brute-force against the root account.
 
----
+**SSH-1.99 banner** indicates the server supports both **vulnerable SSH-1** and SSH-2.
 
-#### **3. R-Services**
+## SSH Auth Method Identification
 
-R-Services (**TCP ports 512, 513, 514**) are legacy protocols that rely on "trusted" relationships rather than strong encryption. They are highly vulnerable to **MITM attacks** because traffic is unencrypted.
+A banner is captured and you need to determine if `password` or `publickey` authentication is accepted before starting a brute-force.
 
-**A. Command Reference**
+Verbose connection to list supported authentication methods
 
-|Command|Port|Description|
-|:--|:--|:--|
-|**rcp**|514|Copy files between hosts; no warning when overwriting.|
-|**rsh**|514|Opens a shell on a remote machine without a login procedure.|
-|**rexec**|512|Runs shell commands; requires a username and password.|
-|**rlogin**|513|Remote login (similar to telnet).|
+```
+ssh -v <USERNAME>@<TARGET_IP>
+```
 
-**B. Exploiting Trust Relationships** Authentication is often bypassed by entries in **`/etc/hosts.equiv`** (global) or **`.rhosts`** (per-user).
+Force password prompt to verify if password-based logins are enabled
 
-1. **Check for Open Ports:**
-    
-    ```
-    sudo nmap -sV -p 512,513,514 <TARGET_IP>
-    ```
-    
-2. **Attempt Unauthenticated Login:** If the target trusts your IP or has a wildcard (`+`) configured, you can log in without a password.
-    
-    ```
-    rlogin <TARGET_IP> -l <USERNAME>
-    ```
-    
+```
+ssh -v <USERNAME>@<TARGET_IP> -o PreferredAuthentications=password
+```
 
-**C. Post-Exploitation Enumeration** Once access is gained, use R-commands to find other active users and hosts to target for lateral movement.
+**CVE-2020-14145** allows MITM attacks during the initial connection attempt on certain versions.
 
-|Goal|Command|
-|:--|:--|
-|**List** interactive sessions on the local network (UDP 513)|`rwho`|
-|**Detailed** info on logged-in users (host, TTY, login time)|`rusers -al <TARGET_IP>`|
+## Rsync Share Discovery
 
-- **Decision Point:** Use the information from `rwho` and `rusers` to compile a list of **usernames and hostnames** for credential stuffing or password reuse attacks.
+Port 873 is open and you need to identify available modules/shares.
+
+Probe the service to list the internal module names
+
+```
+nc -nv <TARGET_IP> 873
+```
+
+Query the banner and protocol version
+
+```
+sudo nmap -sV -p 873 <TARGET_IP>
+```
+
+> ⚠️ Gap: Nmap service scripts or manual `nc` interaction may fail to list shares if the `rsync` daemon is configured with `list = no` in `rsyncd.conf`.
+
+## Rsync Data Exfiltration
+
+A share name is known and you need to pull files or check for sensitive data like SSH keys.
+
+List files in a specific share without downloading
+
+```
+rsync -av --list-only rsync://<TARGET_IP>/<SHARE_NAME>
+```
+
+Sync all contents from the remote share to the current directory
+
+```
+rsync -av rsync://<TARGET_IP>/<SHARE_NAME> .
+```
+
+Use when Rsync is configured to tunnel over a non-standard SSH port
+
+```
+rsync -av -e "ssh -p <PORT>" rsync://<TARGET_IP>/<SHARE_NAME>
+```
+
+**Password re-use** is common; use credentials found elsewhere if anonymous access fails.
+
+## R-Services Authentication Bypass
+
+Ports 512, 513, or 514 are open and you are testing for trusted host relationships.
+
+Attempt login without a password using a specific username
+
+```
+rlogin <TARGET_IP> -l <USERNAME>
+```
+
+Execute a single command on the remote host via rexec (requires credentials)
+
+```
+rexec -p <PASSWORD> -l <USERNAME> <TARGET_IP> <SERVICE_NAME>
+```
+
+- **+ Wildcard**: A `+` in `/etc/hosts.equiv` or `.rhosts` allows **any user from any host** to log in without a password.
+- **Unencrypted Traffic**: All R-services transmit data in cleartext and are **vulnerable to MITM**.
+
+**Authentication fails** if the source IP/hostname and username do not exactly match an entry in the remote `.rhosts` or `/etc/hosts.equiv` files.
+
+## R-Services User Enumeration
+
+You have established a shell or have network access and need to scope out active users for further targeting.
+
+List all users currently logged into the local network
+
+```
+rwho
+```
+
+Detailed list of logged-in users including TTY and login time
+
+```
+rusers -al <TARGET_IP>
+```
+
+**rwho relies on broadcasts**; if the daemon is not actively broadcasting, the command will return no results even if users are logged in.
