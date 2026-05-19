@@ -13,12 +13,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "12 - Using Web Proxies/04 - Web Scanner/01 - Burp Scanner.md",
+                "file": "12 - Using Web Proxies/02 - Web Proxy/07 - Proxying Tools.md",
                 "mode": "preview",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "01 - Burp Scanner"
+              "title": "07 - Proxying Tools"
             }
           }
         ]
@@ -186,8 +186,19 @@
   },
   "active": "5dd242a4c7437ef4",
   "lastOpenFiles": [
-    "0.01 - Something for me/Something for me/Something i need.md",
+    "12 - Using Web Proxies/02 - Web Proxy/01 - Proxy Setup.md",
+    "12 - Using Web Proxies/02 - Web Proxy/02 - Intercepting Web Requests.md",
+    "12 - Using Web Proxies/02 - Web Proxy/03 - Intercepting Responses.md",
+    "12 - Using Web Proxies/02 - Web Proxy/04 - Automatic Modification.md",
+    "12 - Using Web Proxies/02 - Web Proxy/05 - Repeating Requests.md",
+    "12 - Using Web Proxies/03 - Web Fuzzer/02 - ZAP Fuzzer.md",
+    "12 - Using Web Proxies/03 - Web Fuzzer/01 - Burp Intruder.md",
+    "12 - Using Web Proxies/02 - Web Proxy/06 - Encoding-Decoding.md",
+    "12 - Using Web Proxies/04 - Web Scanner/03 - Extensions.md",
     "0.01 - Something for me/Something for me/My prompt.md",
+    "12 - Using Web Proxies/04 - Web Scanner/02 - ZAP Scanner.md",
+    "12 - Using Web Proxies/04 - Web Scanner/01 - Burp Scanner.md",
+    "0.01 - Something for me/Something for me/Something i need.md",
     "01 - Network Enumeration with Nmap/03  - Bypass Security Measures/Firewall and IDS IPS Evasion.md",
     "01 - Network Enumeration with Nmap/02 - Host Enumeration/Host Discovery.md",
     "01 - Network Enumeration with Nmap/01 - Introduction/Introduction 1.md",
@@ -201,17 +212,6 @@
     "02 - Footprinting/03 - Host Based Enumeration/06 - IMAP  POP3.md",
     "02 - Footprinting/03 - Host Based Enumeration/05 - SMTP.md",
     "02 - Footprinting/03 - Host Based Enumeration/04 - DNS.md",
-    "02 - Footprinting/03 - Host Based Enumeration/03 - NFS.md",
-    "02 - Footprinting/03 - Host Based Enumeration/02 - SMB.md",
-    "02 - Footprinting/03 - Host Based Enumeration/01 - FTP.md",
-    "02 - Footprinting/02 - Infrastructure Based Enumeration/03 - Staff.md",
-    "02 - Footprinting/02 - Infrastructure Based Enumeration/02 - Cloud Resources.md",
-    "02 - Footprinting/02 - Infrastructure Based Enumeration/01 - Domain Information.md",
-    "02 - Footprinting/01 - Introduction/01 - Introduction.md",
-    "12 - Using Web Proxies/01 - Getting started/01 - Getting started.md",
-    "0.01 - Something for me/01 - Linux/Linux Fundamentals.md",
-    "09 - Attacking Common Services/03 - FTP/01 - Attacking FTP.md",
-    "12 - Using Web Proxies/03 - Web Fuzzer/02 - ZAP Fuzzer.md",
     "12 - Using Web Proxies/04 - Web Scanner",
     "12 - Using Web Proxies/03 - Web Fuzzer/Untitled",
     "12 - Using Web Proxies/03 - Web Fuzzer",
